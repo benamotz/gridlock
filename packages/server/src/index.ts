@@ -1,3 +1,6 @@
+import { existsSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { GAMEPLAY } from '@gridlock/shared';
 import { createGameServer, type LogFn } from './app.js';
 
@@ -22,10 +25,26 @@ const log: LogFn = (level, msg, meta) => {
   else console.log(JSON.stringify(line));
 };
 
-const game = createGameServer({ log });
+/**
+ * The built client, hosted by this process in production. `CLIENT_DIST`
+ * overrides the default of the client package's Vite output. In development
+ * there is usually no build there, and Vite serves the page instead.
+ */
+const clientDir = ((): string | null => {
+  const dir = process.env.CLIENT_DIST ||
+    fileURLToPath(new URL('../../client/dist', import.meta.url));
+  return existsSync(path.join(dir, 'index.html')) ? dir : null;
+})();
+
+/** Proxies in front of the server (1 on Render); 0 trusts no forwarded headers. */
+const trustedProxyHops = Math.max(0, Math.floor(Number(process.env.TRUST_PROXY ?? 0)) || 0);
+
+const game = createGameServer({ log, clientDir, trustedProxyHops });
 
 void game.listen(PORT, HOST).then((port) => {
-  log('info', 'gridlock server listening', { port, host: HOST, tickHz: GAMEPLAY.tickHz });
+  log('info', 'gridlock server listening', {
+    port, host: HOST, tickHz: GAMEPLAY.tickHz, servingClient: clientDir, trustedProxyHops,
+  });
 });
 
 const shutdown = (signal: string): void => {

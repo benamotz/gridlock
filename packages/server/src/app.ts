@@ -1,10 +1,13 @@
 import http from 'node:http';
+import path from 'node:path';
 import express from 'express';
 import { WebSocketServer } from 'ws';
-import { GAMEPLAY, PROTOCOL_VERSION, mapSummaries } from '@gridlock/shared';
+import { mapSummaries } from '@gridlock/shared';
 import { MemoryStore, type Store } from './persistence/index.js';
 import { RoomManager } from './rooms/RoomManager.js';
 import { Connection, SessionRegistry } from './net/Connection.js';
+import { clientAddress } from './net/clientAddress.js';
+import { ProcessLoad, healthReport } from './health.js';
 
 export type LogFn = (
   level: 'info' | 'warn',
@@ -15,6 +18,14 @@ export type LogFn = (
 export interface GameServerOptions {
   store?: Store;
   log?: LogFn;
+  /**
+   * Directory of the built web client. When set, this server hosts the game
+   * page itself, so one service and one URL serve both the page and its
+   * WebSocket - which is also why the client can find the socket on its own.
+   */
+  clientDir?: string | null;
+  /** Proxies in front of the server whose X-Forwarded-For entries are trusted. */
+  trustedProxyHops?: number;
 }
 
 export interface GameServer {
@@ -42,16 +53,14 @@ export function createGameServer(opts: GameServerOptions = {}): GameServer {
   const rooms = new RoomManager(store);
   const sessions = new SessionRegistry();
 
+  const load = new ProcessLoad();
+
   const app = express();
+  app.disable('x-powered-by');
 
   app.get('/api/health', (_req, res) => {
-    res.json({
-      ok: true,
-      protocol: PROTOCOL_VERSION,
-      rooms: rooms.count,
-      tickHz: GAMEPLAY.tickHz,
-      uptimeSec: Math.round(process.uptime()),
-    });
+    res.set('Cache-Control', 'no-store');
+    res.json(healthReport(rooms, load.current(), Math.round(process.uptime())));
   });
 
   app.get('/api/maps', (_req, res) => {
@@ -74,6 +83,13 @@ export function createGameServer(opts: GameServerOptions = {}): GameServer {
     );
   });
 
+  // Any other API path is a real 404, never the game page.
+  app.use('/api', (_req, res) => {
+    res.status(404).json({ error: 'not_found' });
+  });
+
+  if (opts.clientDir) serveClient(app, path.resolve(opts.clientDir));
+
   const server = http.createServer(app);
   const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
 
@@ -83,7 +99,9 @@ export function createGameServer(opts: GameServerOptions = {}): GameServer {
     ws.on('pong', () => {
       client.isAlive = true;
     });
-    new Connection(ws, { rooms, sessions, store, log }, req.socket.remoteAddress ?? 'unknown');
+    new Connection(
+      ws, { rooms, sessions, store, log }, clientAddress(req, opts.trustedProxyHops ?? 0),
+    );
   });
 
   // Drop sockets that stop responding, so dead links free their slot promptly
@@ -117,9 +135,36 @@ export function createGameServer(opts: GameServerOptions = {}): GameServer {
     close: () =>
       new Promise((resolve) => {
         clearInterval(heartbeat);
+        load.stop();
         rooms.shutdown();
         for (const ws of wss.clients) ws.terminate();
         wss.close(() => server.close(() => resolve()));
       }),
   };
+}
+
+/**
+ * Hosts the built client.
+ *
+ * Vite fingerprints everything under /assets, so those files can be cached for
+ * a year. index.html is never cached, so a redeploy reaches players on their
+ * next page load rather than whenever a cache happens to expire.
+ */
+function serveClient(app: express.Express, dir: string): void {
+  app.use('/assets', express.static(path.join(dir, 'assets'), {
+    immutable: true, maxAge: '1y', index: false,
+  }));
+  // A missing asset is a plain 404. Letting the static handler raise it as an
+  // error printed a stack trace for every stray request, which on a public URL
+  // means log spam from every scanner that probes it.
+  app.use('/assets', (_req, res) => {
+    res.status(404).end();
+  });
+  app.use(express.static(dir, { index: false, maxAge: '1h' }));
+  const shell = path.join(dir, 'index.html');
+  // Every other GET is a page load - including a refresh on any path.
+  app.get(/.*/, (_req, res) => {
+    res.set('Cache-Control', 'no-cache');
+    res.sendFile(shell);
+  });
 }

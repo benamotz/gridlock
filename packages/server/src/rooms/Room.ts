@@ -20,6 +20,7 @@ import { buildSnapshot } from '../net/snapshot.js';
 import { tryDeploy } from '../sim/deployables.js';
 import { randomName } from '../names.js';
 import type { Store } from '../persistence/index.js';
+import { CATCH_UP_CAP_MS, TickStats } from './tickStats.js';
 
 export interface MemberSocket {
   send(msg: ServerMessage): void;
@@ -58,8 +59,12 @@ export class Room {
   hostId: string;
   config: MatchConfig;
   phase: MatchPhase = 'lobby';
+  /** Whether the live match keeps real time; read by the health endpoint. */
+  readonly tickStats = new TickStats();
 
   private world: World | null = null;
+  /** True while the previous update was measured, to start a window per match. */
+  private measuring = false;
   private mode: GameMode | null = null;
   private timer: NodeJS.Timeout | null = null;
   private accumulator = 0;
@@ -415,11 +420,20 @@ export class Room {
     // catches up rather than making the world run slow.
     const elapsed = now - this.lastStepAt;
     this.lastStepAt = now;
-    this.accumulator += Math.min(elapsed, 250);
+    this.accumulator += Math.min(elapsed, CATCH_UP_CAP_MS);
+
+    // Only live play is measured; the countdown does almost no work and would
+    // make a fresh match look slow.
+    const measured = this.phase === 'active';
+    if (measured && !this.measuring) this.tickStats.reset(now);
+    this.measuring = measured;
+    const workStart = performance.now();
+    let steps = 0;
 
     while (this.accumulator >= stepMs) {
       this.accumulator -= stepMs;
       if (this.phase === 'active') {
+        steps++;
         this.driveBots(stepMs);
         this.world.step();
         this.mode.update(this.world);
@@ -437,6 +451,9 @@ export class Room {
       this.snapshotCounter = 0;
       this.sendSnapshots();
       this.world.events = [];
+    }
+    if (measured) {
+      this.tickStats.record(now, steps, performance.now() - workStart, elapsed, stepMs);
     }
   }
 

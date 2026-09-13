@@ -1,7 +1,7 @@
 # Roadmap
 
-Status as of 2026-09-12. Features in detail: `../README.md`. Design reasoning:
-`ARCHITECTURE.md`.
+Status as of 2026-09-13. Features in detail: `../README.md`. Design reasoning:
+`ARCHITECTURE.md`. Hosting: `DEPLOY.md`.
 
 ## Where things stand
 
@@ -22,8 +22,8 @@ vertical slice:
   with a placement preview and a server answer for every placement.
 - **Pickups** - wide radius with instant predicted grab animation; health and
   armour carried in a pouch and used on demand.
-- **Quality** - 234 tests (rules, security, end-to-end WebSocket), load test,
-  in-process soak test, production build.
+- **Quality** - 246 tests (rules, security, end-to-end WebSocket, production
+  hosting), load test, in-process soak test, production build.
 
 ## Open questions
 
@@ -42,10 +42,31 @@ vertical slice:
 - Bots neither drive nor use defences.
 - Guest identities only; the PostgreSQL `Store` is not written.
 - No key-rebinding UI; no music.
-- Live matches are dropped whenever the dev server restarts.
+- Live matches are dropped whenever the server restarts or redeploys.
 - `GameClient.ts` (~1,100 lines) and `Renderer.ts` (~950) are due a split.
 
-## Next milestone: mobile-first (in progress)
+## Deployment: play with friends (in progress)
+
+Going one step at a time, aiming for Render's free tier first (details and
+trade-offs in `DEPLOY.md`).
+
+1. **GitHub repository** - done: `github.com/benamotz/gridlock` (public).
+2. **Production packaging** - done: the server hosts the built client on the
+   same port as the API and WebSocket; `render.yaml`; Node 22 pinned;
+   proxy-aware client addresses; `/api/health` reports per-match tick rate,
+   late ticks, dropped time, CPU and event-loop delay.
+3. **Minimal hardening** - next: per-IP connection cap, total room cap, origin
+   check. Confirm Render's `X-Forwarded-For` chain first.
+4. **Deploy to Render** - the user creates the account and applies the
+   Blueprint. Region: Frankfurt, the closest to players in Tel Aviv.
+5. **Live check** - load test against the real URL, then a match with friends
+   while watching `/api/health`.
+
+Measured locally: a full match (8 clients plus 2 bots) used 6.7% of one Apple
+Silicon core. Cloud cores are slower, so the free tier's 0.1 CPU may be
+borderline; if `keepingUp` turns false, move to a paid instance or a VPS.
+
+## Mobile-first (in progress)
 
 ### Decisions (agreed 2026-09-12)
 

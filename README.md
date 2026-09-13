@@ -15,7 +15,7 @@ license and both are swappable from one place.
 
 ## Quick start
 
-Requirements: **Node.js 20+** (developed on 22) and npm 10+. Nothing else — the
+Requirements: **Node.js 22+** and npm 10+. Nothing else — the
 MVP runs entirely in memory, with no database or Redis.
 
 ```bash
@@ -75,7 +75,7 @@ Empty slots fill with bots, so a single player can start a match immediately via
 ```bash
 npm run dev          # shared build + server + client, watch mode
 npm run build        # production build of all three packages
-npm start            # run the built server (serves the API and WebSocket)
+npm start            # run the built server: game page, API and WebSocket on one port
 npm test             # run the full test suite once
 npm run test:watch   # tests in watch mode
 npm run typecheck    # type-check every package
@@ -91,6 +91,16 @@ npm run loadtest -w @gridlock/server -- --clients 8 --seconds 30
 
 It reports connects, reconnects, snapshot rate, kill events and — the thing it
 exists to catch — whether any reconnect ever duplicated a player.
+
+---
+
+## Deploying
+
+In production one Node process serves the game page, the API and the WebSocket
+on a single port, and `/api/health` reports whether each live match keeps its
+tick rate. `render.yaml` deploys it as a Render web service; the steps, what
+the free tier means for a real-time game, and how to read the health report are
+in [docs/DEPLOY.md](docs/DEPLOY.md).
 
 ---
 
@@ -235,8 +245,9 @@ why.
   stronger pull. That is inherent to trusting the player's aim, and is the
   normal trade-off for the genre.
 - **Desktop controls only, for now.** Mobile-first is the next milestone.
-- **Restarting the dev server drops live matches.** Rooms are held in memory,
-  and `tsx watch` restarts the server on every code change.
+- **Restarts drop live matches.** Rooms are held in memory, so a redeploy ends
+  the matches in progress, a production server runs as a single instance, and
+  `tsx watch` restarts the dev server on every code change.
 - **No music.** Sound effects are synthesised; the music volume slider is wired
   but there is no soundtrack.
 
@@ -257,6 +268,8 @@ a working default and no secrets are required to run the game.
 ```
 PORT=2567          # game server port (also settable with --port)
 HOST=0.0.0.0
+CLIENT_DIST=       # built client to serve; defaults to packages/client/dist
+TRUST_PROXY=0      # proxies in front of the server (1 on Render)
 ```
 
 The server also accepts `--port <n>`, which takes precedence over the

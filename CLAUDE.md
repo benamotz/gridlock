@@ -40,6 +40,7 @@ packages/client
 npm run dev          # builds shared, starts server :2567 + client :5173
 npm test             # full suite (server + client tests)
 npm run build        # shared + server + client production build
+npm start            # production: one port serves client/dist + /api + /ws
 npm run typecheck
 npm run loadtest     # 8 WebSocket clients vs a running server
 npm run soak         # 2-minute in-process room soak; watch heap stay flat
@@ -79,6 +80,18 @@ After editing `packages/shared`, rebuild it before typechecking the others:
 - Fixed test coordinates on depot-yard: use **(1100, 200)** for clear ground.
   (960, 300) sits beside the armored car spawn and inside a map armor pickup's
   60-unit radius.
+- Production is one Node process on one port. The server hosts
+  `packages/client/dist` whenever it contains `index.html` - so after a local
+  `npm run build`, the dev server on :2567 serves that (possibly stale) build
+  too; use Vite on :5173 for development. Deploy config is `render.yaml`;
+  hosting notes are in `docs/DEPLOY.md`.
+- `/api/health` is public: per-match tick stats and process load only. Never
+  add room codes or player names to it - a code is enough to join a private room.
+- The repo is public on GitHub (`benamotz/gridlock`). No secrets in code, and
+  commit or push only when the user asks. Every push to `main` redeploys once
+  Render is connected, which ends live matches.
+- The Docker daemon is usually not running on this machine; do not rely on it
+  for verification.
 - Browser pane automation: coordinate clicks on menu buttons are unreliable -
   click via `javascript_tool` on the DOM element, and dispatch key events on
   `document`. **The user often playtests in the same preview tab while work is

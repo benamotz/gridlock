@@ -1,0 +1,24 @@
+# Render Blueprint: one free web service that hosts both the game page and its
+# WebSocket server. In the Render dashboard choose New -> Blueprint and pick
+# this repository. Step-by-step notes are in docs/DEPLOY.md.
+#
+# Every push to the default branch redeploys, and a redeploy ends any match in
+# progress (rooms live in memory) - push when nobody is playing.
+services:
+  - type: web
+    name: gridlock
+    runtime: node
+    plan: free
+    # The region closest to the players (currently in Tel Aviv). It cannot be
+    # changed after the service is created; others include oregon, ohio,
+    # virginia and singapore.
+    region: frankfurt
+    # TypeScript and Vite are dev dependencies but are needed to build.
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: TRUST_PROXY
+        value: "1"
