@@ -60,14 +60,15 @@ trade-offs in `DEPLOY.md`).
    one address is never refused; server room cap (20); WebSocket origin check;
    refusals explained on the menu; `/api/whoami` to confirm Render's
    `X-Forwarded-For` chain after the first deploy.
-4. **Deploy to Render** - the user creates the account and applies the
-   Blueprint. Region: Frankfurt, the closest to players in Tel Aviv.
-5. **Live check** - load test against the real URL, then a match with friends
-   while watching `/api/health`.
+4. **Deploy to Render** - done: `https://gridlock-w2tc.onrender.com`, free
+   plan, Frankfurt (closest to players in Tel Aviv).
+5. **Live check** - load test passed on the live service (8 clients, 30
+   ticks/s, 5.8-8.2% CPU, 67-79 ms ping from Tel Aviv). Found and fixed
+   `TRUST_PROXY` (Render's chain needs 3, not 1). Remaining: a real match with
+   friends while watching `/api/health`.
 
-Measured locally: a full match (8 clients plus 2 bots) used 6.7% of one Apple
-Silicon core. Cloud cores are slower, so the free tier's 0.1 CPU may be
-borderline; if `keepingUp` turns false, move to a paid instance or a VPS.
+The free tier's 0.1 CPU carries one full match with little headroom; if
+`keepingUp` turns false, move to a paid instance or a VPS.
 
 ## Mobile-first (in progress)
 

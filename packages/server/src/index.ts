@@ -36,7 +36,7 @@ const clientDir = ((): string | null => {
   return existsSync(path.join(dir, 'index.html')) ? dir : null;
 })();
 
-/** Proxies in front of the server (1 on Render); 0 trusts no forwarded headers. */
+/** Proxies in front of the server (3 on Render); 0 trusts no forwarded headers. */
 const trustedProxyHops = Math.max(0, Math.floor(Number(process.env.TRUST_PROXY ?? 0)) || 0);
 
 /** Extra origins allowed to open game connections, comma-separated; "*" allows any. */

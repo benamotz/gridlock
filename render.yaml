@@ -20,5 +20,8 @@ services:
     envVars:
       - key: NODE_VERSION
         value: "22"
+      # Measured on the live service: X-Forwarded-For arrives as
+      # "client, Cloudflare edge, Render load balancer", so the client is the
+      # third entry from the right. Re-check with /api/whoami if Render changes.
       - key: TRUST_PROXY
-        value: "1"
+        value: "3"

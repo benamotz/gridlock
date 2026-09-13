@@ -269,7 +269,7 @@ a working default and no secrets are required to run the game.
 PORT=2567          # game server port (also settable with --port)
 HOST=0.0.0.0
 CLIENT_DIST=       # built client to serve; defaults to packages/client/dist
-TRUST_PROXY=0      # proxies in front of the server (1 on Render)
+TRUST_PROXY=0      # proxies in front of the server (3 on Render)
 ALLOWED_ORIGINS=   # extra page origins allowed to connect; own host always is
 MAX_ROOMS=20       # most rooms the server holds at once
 ```

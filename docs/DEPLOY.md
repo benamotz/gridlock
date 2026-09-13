@@ -36,6 +36,11 @@ than `TRUST_PROXY` says: look at `forwardedFor`, set `TRUST_PROXY` to the
 number of entries after your own IP plus one, and redeploy. Per-address limits
 count the wrong thing until this is right.
 
+Measured on the live service (2026-09-13): `forwardedFor` arrives as
+`client, Cloudflare edge, Render load balancer (10.x)` and the socket peer is
+a local proxy, so `TRUST_PROXY` is 3. The first deploy used 1, which made every
+player look like the load balancer - one shared address for the whole server.
+
 ## What the free tier means in practice
 
 - The service **sleeps after 15 minutes** without traffic. The next visitor
@@ -63,9 +68,17 @@ fetch it.
 
 **Measured locally (2026-09-13):** 8 load-test clients plus 2 bots on Depot
 Yard used 6.7% of one Apple Silicon core, 1.05 ms of work per tick, at 30.1
-ticks per second. Cloud cores are slower, so a full match may sit at or above
-the free tier's 0.1 CPU. If players see lag and `keepingUp` goes `false`, move
-to a paid Render instance or a small VPS; nothing in the code changes.
+ticks per second.
+
+**Measured on the live Render free service (2026-09-13, Frankfurt):** the same
+8-client load test from Tel Aviv passed with no errors. Ticks held at 29.9-30.1
+per second with no dropped time; CPU was 5.8-8.2% of a core, just inside the
+0.1 CPU allowance; average work was about 1 ms per tick, with occasional spikes
+of 50-67 ms (0-8 late callbacks per 10 s). Game ping from Tel Aviv was 67-79 ms.
+
+That is enough for one full match, with little headroom. If players see lag
+and `keepingUp` goes `false`, move to a paid Render instance or a small VPS;
+nothing in the code changes.
 
 ## Limits and shared networks
 
@@ -106,7 +119,7 @@ npm run loadtest -w @gridlock/server -- --url ws://localhost:4100/ws --seconds 3
 | `PORT` | 2567 | Port to listen on; hosting platforms set it. `--port` and `GRIDLOCK_PORT` take precedence. |
 | `HOST` | 0.0.0.0 | Interface to bind. |
 | `CLIENT_DIST` | `packages/client/dist` | Built client to serve. Nothing is served if it has no `index.html`. |
-| `TRUST_PROXY` | 0 | Proxies in front of the server whose `X-Forwarded-For` entries are trusted. `render.yaml` sets 1; confirm with `/api/whoami` after deploying. |
+| `TRUST_PROXY` | 0 | Proxies in front of the server whose `X-Forwarded-For` entries are trusted. `render.yaml` sets 3 (measured); re-check with `/api/whoami` after deploying. |
 | `ALLOWED_ORIGINS` | - | Extra page origins allowed to open game connections, comma-separated (`*` allows any). The server's own host is always allowed. |
 | `MAX_ROOMS` | 20 | Most rooms the server holds at once. |
 | `NODE_VERSION` | - | Read by Render to pick the Node.js version (22). |
