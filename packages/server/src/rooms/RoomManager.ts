@@ -1,5 +1,6 @@
 import {
   DEFAULT_MATCH_CONFIG,
+  GAMEPLAY,
   type MatchConfig,
   PRACTICE_CONFIG,
   QUICKPLAY_CONFIG,
@@ -28,10 +29,21 @@ export interface JoinOutcome {
 export class RoomManager {
   private rooms = new Map<string, Room>();
 
-  constructor(private readonly store: Store) {}
+  constructor(
+    private readonly store: Store,
+    private readonly maxRooms: number = GAMEPLAY.net.maxRooms,
+  ) {}
 
   get count(): number {
     return this.rooms.size;
+  }
+
+  /**
+   * True when no new room may be opened. Existing rooms stay joinable, so a
+   * busy server still lets friends join each other's matches by code.
+   */
+  get atCapacity(): boolean {
+    return this.rooms.size >= this.maxRooms;
   }
 
   list(): Room[] {
@@ -76,13 +88,17 @@ export class RoomManager {
 
   /** Finds the best public room to drop into, or opens a fresh one. */
   quickPlay(playerId: string): Room {
-    const candidates = this.list()
-      .filter((r) => !r.isPrivate && r.isJoinable)
-      // Prefer the fullest room so matches fill rather than fragmenting.
-      .sort((a, b) => b.humanCount - a.humanCount);
-    const existing = candidates[0];
+    const existing = this.bestPublicRoom();
     if (existing) return existing;
     return this.createRoom(playerId, { ...QUICKPLAY_CONFIG }, false);
+  }
+
+  /** The joinable public room quick-play would pick, if there is one. */
+  bestPublicRoom(): Room | undefined {
+    return this.list()
+      .filter((r) => !r.isPrivate && r.isJoinable)
+      // Prefer the fullest room so matches fill rather than fragmenting.
+      .sort((a, b) => b.humanCount - a.humanCount)[0];
   }
 
   /** A private, bot-filled room for offline-style single-player practice. */

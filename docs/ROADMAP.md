@@ -55,8 +55,11 @@ trade-offs in `DEPLOY.md`).
    same port as the API and WebSocket; `render.yaml`; Node 22 pinned;
    proxy-aware client addresses; `/api/health` reports per-match tick rate,
    late ticks, dropped time, CPU and event-loop delay.
-3. **Minimal hardening** - next: per-IP connection cap, total room cap, origin
-   check. Confirm Render's `X-Forwarded-For` chain first.
+3. **Minimal hardening** - done: per-address connection cap (32) and connect
+   rate (burst 24, then 2/s), sized so a household, office or carrier sharing
+   one address is never refused; server room cap (20); WebSocket origin check;
+   refusals explained on the menu; `/api/whoami` to confirm Render's
+   `X-Forwarded-For` chain after the first deploy.
 4. **Deploy to Render** - the user creates the account and applies the
    Blueprint. Region: Frankfurt, the closest to players in Tel Aviv.
 5. **Live check** - load test against the real URL, then a match with friends

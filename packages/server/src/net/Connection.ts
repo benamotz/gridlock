@@ -14,6 +14,10 @@ import type { RoomManager } from '../rooms/RoomManager.js';
 import type { Room } from '../rooms/Room.js';
 import type { Store } from '../persistence/index.js';
 
+const SERVER_FULL =
+  "The server is at its match limit right now. Join a friend's match by code, " +
+  'or try again in a few minutes.';
+
 /** Resume tokens are opaque and server-generated - clients never choose an id. */
 export interface Session {
   playerId: string;
@@ -139,6 +143,8 @@ export class Connection {
         break;
 
       case 'create_room': {
+        // Checked before leaving, so a refused player keeps the room they are in.
+        if (this.deps.rooms.atCapacity) return this.fail('server_full', SERVER_FULL);
         this.leaveCurrentRoom();
         const room = this.deps.rooms.createRoom(
           this.session.playerId, msg.config, msg.isPrivate,
@@ -164,12 +170,16 @@ export class Connection {
       }
 
       case 'quick_play': {
+        if (this.deps.rooms.atCapacity && !this.deps.rooms.bestPublicRoom()) {
+          return this.fail('server_full', SERVER_FULL);
+        }
         this.leaveCurrentRoom();
         this.enter(this.deps.rooms.quickPlay(this.session.playerId));
         break;
       }
 
       case 'practice': {
+        if (this.deps.rooms.atCapacity) return this.fail('server_full', SERVER_FULL);
         this.leaveCurrentRoom();
         const room = this.deps.rooms.practice(this.session.playerId, msg.config);
         this.enter(room);

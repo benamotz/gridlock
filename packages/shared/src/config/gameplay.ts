@@ -162,6 +162,21 @@ export const GAMEPLAY = {
     messageRateLimit: 120,
     maxMessageBytes: 4096,
     maxNameLength: 18,
+    /**
+     * Open game connections allowed from one network address. Generous on
+     * purpose: a household, an office or a mobile carrier can put many real
+     * players behind a single address.
+     */
+    maxConnectionsPerAddress: 32,
+    /**
+     * New connections one address may open in a burst, then per second after
+     * that. The burst lets a whole group reconnect at once when their Wi-Fi
+     * drops; the refill stops a reconnect loop from hammering the server.
+     */
+    connectBurstPerAddress: 24,
+    connectRefillPerSec: 2,
+    /** Rooms the server holds at once, so no single source can exhaust a small instance. */
+    maxRooms: 20,
   },
 } as const;
 

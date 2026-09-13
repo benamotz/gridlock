@@ -63,6 +63,10 @@ After editing `packages/shared`, rebuild it before typechecking the others:
 - **Every inbound field is clamped** in `parseClientMessage`.
 - **New input actions** need a `DEFAULT_BINDINGS` entry. Saved settings merge
   bindings per action, so old saves do not unbind new keys.
+- **Per-address limits stay generous.** Households, offices and mobile
+  carriers put many real players behind one address, so connection limits are
+  sized for a whole group (see `GAMEPLAY.net`), and a refusal always tells the
+  player why. The load test runs from one address and must keep passing.
 - **Iterate a snapshot** (`[...map.values()]`) whenever the loop body can add
   to or delete from the collection. Mutating the live pickup Map once caused an
   infinite swap loop and an out-of-memory crash.

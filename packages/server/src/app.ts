@@ -2,11 +2,19 @@ import http from 'node:http';
 import path from 'node:path';
 import express from 'express';
 import { WebSocketServer } from 'ws';
-import { mapSummaries } from '@gridlock/shared';
+import { type ServerMessage, mapSummaries } from '@gridlock/shared';
 import { MemoryStore, type Store } from './persistence/index.js';
 import { RoomManager } from './rooms/RoomManager.js';
 import { Connection, SessionRegistry } from './net/Connection.js';
 import { clientAddress } from './net/clientAddress.js';
+import {
+  type AdmissionLimits,
+  CLOSE_REFUSED,
+  ConnectionAdmission,
+  DEFAULT_ADMISSION_LIMITS,
+  REFUSAL_MESSAGES,
+  originAllowed,
+} from './net/admission.js';
 import { ProcessLoad, healthReport } from './health.js';
 
 export type LogFn = (
@@ -26,6 +34,16 @@ export interface GameServerOptions {
   clientDir?: string | null;
   /** Proxies in front of the server whose X-Forwarded-For entries are trusted. */
   trustedProxyHops?: number;
+  /** Per-address connection limits; defaults come from `GAMEPLAY.net`. */
+  admission?: Partial<AdmissionLimits>;
+  /**
+   * Extra page origins allowed to open game connections, e.g. a separate
+   * domain the client is embedded in. "*" allows any. The server's own host is
+   * always allowed.
+   */
+  allowedOrigins?: readonly string[];
+  /** Most rooms the server holds at once. */
+  maxRooms?: number;
 }
 
 export interface GameServer {
@@ -50,8 +68,11 @@ const noopLog: LogFn = () => {};
 export function createGameServer(opts: GameServerOptions = {}): GameServer {
   const store = opts.store ?? new MemoryStore();
   const log = opts.log ?? noopLog;
-  const rooms = new RoomManager(store);
+  const rooms = new RoomManager(store, opts.maxRooms);
   const sessions = new SessionRegistry();
+  const hops = opts.trustedProxyHops ?? 0;
+  const admission = new ConnectionAdmission({ ...DEFAULT_ADMISSION_LIMITS, ...opts.admission });
+  const allowedOrigins = opts.allowedOrigins ?? [];
 
   const load = new ProcessLoad();
 
@@ -83,6 +104,22 @@ export function createGameServer(opts: GameServerOptions = {}): GameServer {
     );
   });
 
+  /**
+   * The caller's own address as the server resolves it. Checked once after a
+   * deploy to confirm TRUST_PROXY matches the host's proxy chain: `address`
+   * should be the caller's public IP, not a proxy's. It only ever shows a
+   * caller their own request.
+   */
+  app.get('/api/whoami', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    res.json({
+      address: clientAddress(req, hops),
+      peer: req.socket.remoteAddress ?? null,
+      forwardedFor: req.headers['x-forwarded-for'] ?? null,
+      trustedProxyHops: hops,
+    });
+  });
+
   // Any other API path is a real 404, never the game page.
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'not_found' });
@@ -91,17 +128,40 @@ export function createGameServer(opts: GameServerOptions = {}): GameServer {
   if (opts.clientDir) serveClient(app, path.resolve(opts.clientDir));
 
   const server = http.createServer(app);
-  const wss = new WebSocketServer({ server, path: '/ws', maxPayload: 16 * 1024 });
+  const wss = new WebSocketServer({
+    server,
+    path: '/ws',
+    maxPayload: 16 * 1024,
+    verifyClient: (info, done) => {
+      if (originAllowed(info.req, allowedOrigins, hops)) {
+        done(true);
+        return;
+      }
+      log('warn', 'websocket origin refused', { origin: info.origin, host: info.req.headers.host });
+      done(false, 403, 'Origin not allowed');
+    },
+  });
 
   wss.on('connection', (ws, req) => {
+    const address = clientAddress(req, hops);
+    const admitted = admission.admit(address);
+    if (!admitted.ok) {
+      // Accept, explain, then close. A handshake refused outright reaches the
+      // browser as a bare failure; a message lets the menu say what happened.
+      log('warn', 'connection refused', { reason: admitted.reason, address });
+      const msg: ServerMessage = { t: 'kicked', reason: REFUSAL_MESSAGES[admitted.reason] };
+      ws.send(JSON.stringify(msg));
+      ws.close(CLOSE_REFUSED, admitted.reason);
+      return;
+    }
+    ws.once('close', admitted.release);
+
     const client = ws as typeof ws & { isAlive?: boolean };
     client.isAlive = true;
     ws.on('pong', () => {
       client.isAlive = true;
     });
-    new Connection(
-      ws, { rooms, sessions, store, log }, clientAddress(req, opts.trustedProxyHops ?? 0),
-    );
+    new Connection(ws, { rooms, sessions, store, log }, address);
   });
 
   // Drop sockets that stop responding, so dead links free their slot promptly
@@ -117,6 +177,7 @@ export function createGameServer(opts: GameServerOptions = {}): GameServer {
       ws.ping();
     }
     sessions.sweep();
+    admission.sweep();
   }, 15000);
   heartbeat.unref?.();
 

@@ -39,11 +39,22 @@ const clientDir = ((): string | null => {
 /** Proxies in front of the server (1 on Render); 0 trusts no forwarded headers. */
 const trustedProxyHops = Math.max(0, Math.floor(Number(process.env.TRUST_PROXY ?? 0)) || 0);
 
-const game = createGameServer({ log, clientDir, trustedProxyHops });
+/** Extra origins allowed to open game connections, comma-separated; "*" allows any. */
+const allowedOrigins = (process.env.ALLOWED_ORIGINS ?? '')
+  .split(',').map((o) => o.trim()).filter(Boolean);
+
+/** Overrides the room cap from config, e.g. to fit a bigger or smaller instance. */
+const maxRooms = ((): number | undefined => {
+  const n = Math.floor(Number(process.env.MAX_ROOMS));
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+})();
+
+const game = createGameServer({ log, clientDir, trustedProxyHops, allowedOrigins, maxRooms });
 
 void game.listen(PORT, HOST).then((port) => {
   log('info', 'gridlock server listening', {
     port, host: HOST, tickHz: GAMEPLAY.tickHz, servingClient: clientDir, trustedProxyHops,
+    allowedOrigins, maxRooms: maxRooms ?? GAMEPLAY.net.maxRooms,
   });
 });
 

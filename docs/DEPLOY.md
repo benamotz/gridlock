@@ -27,6 +27,15 @@ single link. The same build runs anywhere that has Node.js 22.
 
 After that, every push to `main` redeploys automatically.
 
+### Right after the first deploy: check player addresses
+
+Open `https://<your-service>/api/whoami` from your own browser. `address`
+should be your public IP (compare with any "what is my IP" site). If it shows a
+private address such as `10.x.x.x` instead, Render has more proxies in front
+than `TRUST_PROXY` says: look at `forwardedFor`, set `TRUST_PROXY` to the
+number of entries after your own IP plus one, and redeploy. Per-address limits
+count the wrong thing until this is right.
+
 ## What the free tier means in practice
 
 - The service **sleeps after 15 minutes** without traffic. The next visitor
@@ -58,6 +67,25 @@ ticks per second. Cloud cores are slower, so a full match may sit at or above
 the free tier's 0.1 CPU. If players see lag and `keepingUp` goes `false`, move
 to a paid Render instance or a small VPS; nothing in the code changes.
 
+## Limits and shared networks
+
+Friends often play from one network - a house, an office, a phone carrier -
+and all of them then share a single public address. The limits are sized for
+that, and exist only to stop one source flooding the server:
+
+| Limit | Value | Why this size |
+| --- | --- | --- |
+| Open connections per address | 32 | A full match is 8 players; a whole office with extra tabs still fits. |
+| New connections per address | burst of 24, then 2/s | A group whose Wi-Fi drops reconnects at once; a reconnect loop is slowed. |
+| Rooms on the server | 20 (`MAX_ROOMS`) | Protects a small instance's CPU. Existing rooms stay joinable by code. |
+| WebSocket origin | the game's own host | Other websites cannot open game connections from their pages. |
+
+A refused player sees why on the main menu ("Too many game connections from
+your network...") rather than a silent failure. The values live in
+`GAMEPLAY.net` (`packages/shared/src/config/gameplay.ts`). The load test runs
+every client from one address, so it doubles as the check that a group on one
+network is never turned away.
+
 ## Running a production build locally
 
 ```bash
@@ -78,11 +106,11 @@ npm run loadtest -w @gridlock/server -- --url ws://localhost:4100/ws --seconds 3
 | `PORT` | 2567 | Port to listen on; hosting platforms set it. `--port` and `GRIDLOCK_PORT` take precedence. |
 | `HOST` | 0.0.0.0 | Interface to bind. |
 | `CLIENT_DIST` | `packages/client/dist` | Built client to serve. Nothing is served if it has no `index.html`. |
-| `TRUST_PROXY` | 0 | Proxies in front of the server whose `X-Forwarded-For` entries are trusted. `render.yaml` sets 1; confirm Render's proxy chain before relying on client addresses for per-IP limits. |
+| `TRUST_PROXY` | 0 | Proxies in front of the server whose `X-Forwarded-For` entries are trusted. `render.yaml` sets 1; confirm with `/api/whoami` after deploying. |
+| `ALLOWED_ORIGINS` | - | Extra page origins allowed to open game connections, comma-separated (`*` allows any). The server's own host is always allowed. |
+| `MAX_ROOMS` | 20 | Most rooms the server holds at once. |
 | `NODE_VERSION` | - | Read by Render to pick the Node.js version (22). |
 
 ## Not done yet
 
-- Per-IP connection limits, a cap on total rooms and an origin check (next
-  step before sharing the link widely).
 - A Dockerfile for hosts other than Render.
