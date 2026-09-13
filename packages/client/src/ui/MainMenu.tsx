@@ -41,11 +41,14 @@ export function MainMenu(props: Props): React.ReactElement {
         )}
         {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
 
-        <div className="row" style={{ marginBottom: 18 }}>
-          <div className="field grow">
-            <label htmlFor="name">Display name</label>
+        <div className="field" style={{ marginBottom: 18 }}>
+          <label htmlFor="name">Display name</label>
+          {/* Input and button share a row of their own, so they line up exactly
+              and match heights instead of centring against the label too. */}
+          <div className="row stretch">
             <input
               id="name"
+              className="grow"
               type="text"
               value={name}
               maxLength={18}
@@ -53,8 +56,8 @@ export function MainMenu(props: Props): React.ReactElement {
               onChange={(e) => setName(e.target.value)}
               onBlur={commitName}
             />
+            <button className="btn ghost" onClick={props.onOpenSettings}>Settings</button>
           </div>
-          <button className="btn ghost" onClick={props.onOpenSettings}>Settings</button>
         </div>
 
         {panel === 'main' && (

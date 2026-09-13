@@ -57,6 +57,11 @@ After editing `packages/shared`, rebuild it before typechecking the others:
 - **Shared simulation is deterministic in `dt`.** Movement, jump and vehicle
   physics are replayed by client prediction. Timers advance by `dt`, never by
   wall clock. Gameplay physics changes belong in `packages/shared/src/sim`.
+- **Input is consumed by simulated time, not by count** (`World.stepPlayer`,
+  `GAMEPLAY.inputBankMs` / `inputStallMs`). A count cap throttled 120 Hz
+  displays and made vehicles snap; moving a player during a brief input gap
+  contradicted their prediction. Anything that moves a player or their vehicle
+  outside `applyCommand` breaks client prediction.
 - **Tunables live in config**, not in simulation code.
 - **Snapshots are per viewer.** Interest radius, enemy health hidden, enemy
   mines hidden until close, `hitmark` / `damage` / `deploy_result` private.

@@ -67,6 +67,10 @@ export interface PlayerEntity {
   disconnectedAt: number;
   lastProcessedSeq: number;
   pending: InputCommand[];
+  /** Simulated milliseconds this player's queued commands may still consume. */
+  inputBudgetMs: number;
+  /** World time the last real command was applied, to tell jitter from a stall. */
+  lastInputAt: number;
   /** Buttons from the most recently consumed command, for driving continuity. */
   lastButtons: number;
   /** Interaction hint surfaced in this player's next snapshot. */
@@ -104,7 +108,7 @@ export function createPlayer(
     stats: emptyStats(),
     damageTakenFrom: new Map(),
     connection: 'connected', disconnectedAt: 0,
-    lastProcessedSeq: 0, pending: [], lastButtons: 0,
+    lastProcessedSeq: 0, pending: [], inputBudgetMs: 0, lastInputAt: 0, lastButtons: 0,
     prompt: null, swapCandidate: null, deployCooldowns: {},
     medkits: 0, armorPlates: 0, pouchReadyAt: 0, medkitHeld: false, armorHeld: false,
   };

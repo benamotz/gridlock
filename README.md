@@ -230,8 +230,9 @@ why.
 - **Team Deathmatch only.** Capture the Flag and Battle Royale have their data
   (flag bases, safe zones) in the map format and a `GameMode` interface to slot
   into, but no implementation yet.
-- **Bots do not use defences or vehicles.** They fight on foot and ignore both
-  the deploy keys and the driver's seat.
+- **Bots do not drive.** They fight on foot. After spawning they sometimes
+  fortify their base (sentry gun, barricade or mine), but only ever fill half of
+  each team limit, so human teammates always have defences left to place.
 - **Guest identities only.** Accounts, stats, clans and match history run
   through a `Store` interface with an in-memory implementation; the PostgreSQL
   implementation is not written.

@@ -96,6 +96,8 @@ button {
 }
 
 .row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+/* Controls that sit side by side at one shared height, e.g. an input and its button. */
+.row.stretch { align-items: stretch; flex-wrap: nowrap; }
 .col { display: flex; flex-direction: column; gap: 10px; }
 .grow { flex: 1; }
 .spacer { flex: 1; }

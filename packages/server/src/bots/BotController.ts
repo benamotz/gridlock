@@ -1,15 +1,22 @@
 import {
   type BotDifficulty,
   Btn,
+  type DeployableKind,
   GAMEPLAY,
   type InputCommand,
   angleDelta,
+  clamp,
+  defaultDeployRot,
+  deployZoneFor,
+  deployableDef,
   dist,
+  pointInRect,
   weaponDef,
 } from '@gridlock/shared';
 import type { PickupEntity, PlayerEntity } from '../sim/entities.js';
 import type { World } from '../sim/World.js';
 import { SLOT_PRIMARY } from '../sim/loadout.js';
+import { type DeployResult, teamDeployCount } from '../sim/deployables.js';
 
 interface DifficultyProfile {
   /** Seconds before a newly spotted enemy is engaged. */
@@ -36,7 +43,51 @@ type Goal =
   | { kind: 'fight'; targetId: string }
   | { kind: 'gear'; pickupId: string }
   | { kind: 'heal'; pickupId: string }
-  | { kind: 'roam'; x: number; y: number };
+  | { kind: 'roam'; x: number; y: number }
+  | {
+    kind: 'fortify';
+    defence: DeployableKind;
+    x: number;
+    y: number;
+    aim: number;
+    rot: number;
+    /** Give up on this placement after this time. */
+    until: number;
+  };
+
+/** A defence placement the room should attempt on a bot's behalf. */
+export interface BotDeployRequest {
+  kind: DeployableKind;
+  rot: number;
+  aim: number;
+}
+
+export interface BotOptions {
+  /** Overrides `GAMEPLAY.defences.botFortifyChance`; tests use 1. */
+  fortifyChance?: number;
+}
+
+/** How many of a team's `teamLimit` defences of one kind bots may hold. */
+export function botShare(teamLimit: number): number {
+  return Math.max(1, Math.floor(teamLimit * GAMEPLAY.defences.botShare));
+}
+
+/** Defences of one kind a team's bots currently have placed. */
+export function botDeployCount(world: World, team: number, kind: DeployableKind): number {
+  let n = 0;
+  for (const d of world.deployables.values()) {
+    if (d.team !== team || d.kind !== kind) continue;
+    // A defence whose owner has left is counted against the bots, so humans
+    // are never the ones squeezed out.
+    if (world.players.get(d.ownerId)?.isBot !== false) n++;
+  }
+  return n;
+}
+
+/** Radius within which a bot counts as standing at its fortify spot. */
+const FORTIFY_ARRIVE = 36;
+/** A bot only fortifies on its way out of base, this soon after spawning. */
+const FORTIFY_WINDOW_MS = 8000;
 
 /**
  * Server-side bot.
@@ -44,7 +95,8 @@ type Goal =
  * Bots are ordinary players: they produce `InputCommand`s and the world
  * validates them exactly as it does a human's. Nothing here can set health,
  * ammunition or position directly, which means a bot cannot do anything a
- * human client could not also do.
+ * human client could not also do. Defence placements go through the same
+ * `tryDeploy` a human's request does.
  */
 export class BotController {
   private goal: Goal = { kind: 'roam', x: 0, y: 0 };
@@ -62,24 +114,40 @@ export class BotController {
   private nextJumpRollAt = 0;
   private nextPouchAt = 0;
 
+  /** Whether the bot was alive last tick, to notice a (re)spawn. */
+  private wasAlive = false;
+  private spawnedAt = 0;
+  /** Rolled once per life: whether this life starts by fortifying the base. */
+  private fortifyThisLife = false;
+  private nextFortifyAt = 0;
+  private fortifyRetries = 0;
+  private deployRequest: BotDeployRequest | null = null;
+
   constructor(
     readonly playerId: string,
     private readonly profile: DifficultyProfile,
     private readonly rng: () => number,
+    private readonly options: BotOptions = {},
   ) {}
 
   static forDifficulty(
     playerId: string,
     difficulty: BotDifficulty,
     rng: () => number,
+    options: BotOptions = {},
   ): BotController {
-    return new BotController(playerId, PROFILES[difficulty], rng);
+    return new BotController(playerId, PROFILES[difficulty], rng, options);
   }
 
   /** Produces this tick's input command, or null when the bot cannot act. */
   think(world: World, dtMs: number): InputCommand | null {
     const me = world.players.get(this.playerId);
-    if (!me || me.life !== 'alive') return null;
+    if (!me || me.life !== 'alive') {
+      this.wasAlive = false;
+      return null;
+    }
+    if (!this.wasAlive) this.onSpawn(world);
+    this.wasAlive = true;
 
     const dt = dtMs / 1000;
     if (world.now >= this.nextDecisionAt) {
@@ -96,6 +164,8 @@ export class BotController {
     const target = this.goal.kind === 'fight'
       ? world.players.get(this.goal.targetId) ?? null
       : null;
+    const atFortifySpot = this.goal.kind === 'fortify' &&
+      dist(me.x, me.y, this.goal.x, this.goal.y) < FORTIFY_ARRIVE;
 
     // --- aiming ---------------------------------------------------------
     if (target && target.life === 'alive') {
@@ -104,6 +174,8 @@ export class BotController {
       const tx = target.x + target.vx * lead;
       const ty = target.y + target.vy * lead;
       desiredAim = Math.atan2(ty - me.y, tx - me.x);
+    } else if (this.goal.kind === 'fortify' && atFortifySpot) {
+      desiredAim = this.goal.aim;
     } else if (this.goal.kind !== 'fight') {
       const g = this.goalPoint(world);
       if (g) desiredAim = Math.atan2(g.y - me.y, g.x - me.x);
@@ -136,11 +208,29 @@ export class BotController {
       if (me.hp < 40 && this.rng() > this.profile.aggression) {
         moveAngle = toTarget + Math.PI;
       }
+    } else if (this.goal.kind === 'fortify' && atFortifySpot) {
+      // In position: stand still and ask for the placement, facing the enemy
+      // side. The choice is re-checked now, not trusted from when it was
+      // planned: several bots can plan the same defence at once, and the
+      // first to arrive may already have used the bots' share of it.
+      const kind = this.canPlace(world, me, this.goal.defence)
+        ? this.goal.defence
+        : this.pickDefence(world, me);
+      if (kind) {
+        this.deployRequest ??= {
+          kind, rot: defaultDeployRot(kind, this.goal.aim), aim: this.goal.aim,
+        };
+      } else {
+        this.goal = { ...this.goal, until: 0 };
+        this.nextDecisionAt = 0;
+      }
     } else {
       const g = this.goalPoint(world);
       if (g) {
         moveAngle = Math.atan2(g.y - me.y, g.x - me.x);
-        if (dist(me.x, me.y, g.x, g.y) < 40) this.nextDecisionAt = 0;
+        if (this.goal.kind !== 'fortify' && dist(me.x, me.y, g.x, g.y) < 40) {
+          this.nextDecisionAt = 0;
+        }
       }
     }
 
@@ -209,7 +299,39 @@ export class BotController {
     };
   }
 
+  /**
+   * The placement this bot wants the room to attempt, if any. Taking it clears
+   * it; the room reports back through `onDeployResult`.
+   */
+  takeDeployRequest(): BotDeployRequest | null {
+    const request = this.deployRequest;
+    this.deployRequest = null;
+    return request;
+  }
+
+  onDeployResult(result: DeployResult): void {
+    if (this.goal.kind === 'fortify') this.goal = { ...this.goal, until: 0 };
+    this.nextDecisionAt = 0;
+    // A spot that turned out to be blocked gets a couple of fresh tries.
+    if (!result.ok && result.reason === 'blocked' && this.fortifyRetries < 2) {
+      this.fortifyRetries++;
+      this.fortifyThisLife = true;
+      this.nextFortifyAt = 0;
+    } else {
+      this.fortifyRetries = 0;
+    }
+  }
+
   // -------------------------------------------------------------------------
+
+  private onSpawn(world: World): void {
+    this.spawnedAt = world.now;
+    const chance = this.options.fortifyChance ?? GAMEPLAY.defences.botFortifyChance;
+    this.fortifyThisLife = this.rng() < chance;
+    this.fortifyRetries = 0;
+    this.deployRequest = null;
+    this.nextDecisionAt = 0;
+  }
 
   private decide(world: World, me: PlayerEntity): void {
     // 1. Badly hurt and a medkit is nearby - go and heal.
@@ -231,7 +353,13 @@ export class BotController {
       return;
     }
 
-    // 3. No real weapon - find one.
+    // 3. Finish a placement already under way.
+    if (this.goal.kind === 'fortify' && world.now < this.goal.until) return;
+
+    // 4. Just spawned at home with nothing to shoot - sometimes fortify first.
+    if (this.planFortify(world, me)) return;
+
+    // 5. No real weapon - find one.
     const primary = me.slots[SLOT_PRIMARY];
     if (!primary || (primary.ammo <= 0 && primary.reserve <= 0)) {
       const gun = this.nearestPickup(
@@ -243,7 +371,7 @@ export class BotController {
       }
     }
 
-    // 4. Otherwise roam toward a random point, biased to the map centre where
+    // 6. Otherwise roam toward a random point, biased to the map centre where
     //    the contested pickups are.
     const m = world.mapDef;
     const cx = m.width / 2;
@@ -255,8 +383,96 @@ export class BotController {
     };
   }
 
+  private planFortify(world: World, me: PlayerEntity): boolean {
+    if (!this.fortifyThisLife || world.now < this.nextFortifyAt) return false;
+    if (world.now - this.spawnedAt > FORTIFY_WINDOW_MS) return false;
+    if (!pointInRect(me.x, me.y, deployZoneFor(world.mapDef, me.team))) return false;
+
+    this.fortifyThisLife = false;
+    const kind = this.pickDefence(world, me);
+    if (!kind) return false;
+    const spot = this.fortifySpot(world, me, kind);
+    if (!spot) return false;
+
+    this.nextFortifyAt = world.now + GAMEPLAY.defences.botFortifyCooldownSec * 1000;
+    this.goal = { kind: 'fortify', defence: kind, ...spot, until: world.now + 9000 };
+    return true;
+  }
+
+  /** The most useful defence this bot may still place: guns, then walls, then mines. */
+  private pickDefence(world: World, me: PlayerEntity): DeployableKind | null {
+    for (const kind of ['turret', 'barricade', 'mine'] as DeployableKind[]) {
+      if (this.canPlace(world, me, kind)) return kind;
+    }
+    return null;
+  }
+
+  private canPlace(world: World, me: PlayerEntity, kind: DeployableKind): boolean {
+    if ((me.deployCooldowns[kind] ?? 0) > world.now) return false;
+    const limit = deployableDef(kind).teamLimit;
+    if (teamDeployCount(world, me.team, kind) >= limit) return false;
+    return botDeployCount(world, me.team, kind) < botShare(limit);
+  }
+
+  /**
+   * Where to stand to place a defence: toward the edge of the base that faces
+   * the nearest enemy base, so it covers the way attackers arrive. Walls turn
+   * side-on to that direction; mines go furthest out, on the approach.
+   */
+  private fortifySpot(
+    world: World,
+    me: PlayerEntity,
+    kind: DeployableKind,
+  ): { x: number; y: number; aim: number; rot: number } | null {
+    const map = world.mapDef;
+    const own = map.teamSpawns.find((s) => s.team === me.team)?.zone;
+    if (!own) return null;
+    const cx = own.x + own.w / 2;
+    const cy = own.y + own.h / 2;
+
+    let ex = map.width / 2;
+    let ey = map.height / 2;
+    let nearest = Infinity;
+    for (const s of map.teamSpawns) {
+      if (s.team === me.team) continue;
+      const sx = s.zone.x + s.zone.w / 2;
+      const sy = s.zone.y + s.zone.h / 2;
+      const d = dist(cx, cy, sx, sy);
+      if (d < nearest) {
+        nearest = d;
+        ex = sx;
+        ey = sy;
+      }
+    }
+    const aim = Math.atan2(ey - cy, ex - cx);
+
+    // How far the fortifiable zone reaches from its centre along that heading,
+    // less room for the defence itself, which lands ahead of the bot.
+    const zone = deployZoneFor(map, me.team);
+    const reach = Math.min(
+      Math.abs(zone.w / 2 / (Math.cos(aim) || 1e-6)),
+      Math.abs(zone.h / 2 / (Math.sin(aim) || 1e-6)),
+    );
+    const def = deployableDef(kind);
+    const margin = kind === 'mine' ? 40 : 120;
+    const along = Math.max(0, reach - def.placeOffset - def.length / 2 - margin);
+    const spread = kind === 'turret' ? 70 : kind === 'barricade' ? 160 : 220;
+    const side = (this.rng() * 2 - 1) * spread;
+
+    const x = clamp(
+      cx + Math.cos(aim) * along - Math.sin(aim) * side, zone.x + 40, zone.x + zone.w - 40,
+    );
+    const y = clamp(
+      cy + Math.sin(aim) * along + Math.cos(aim) * side, zone.y + 40, zone.y + zone.h - 40,
+    );
+    if (world.grid.circleBlocked(x, y, GAMEPLAY.player.radius)) return null;
+    return { x, y, aim, rot: defaultDeployRot(kind, aim) };
+  }
+
   private goalPoint(world: World): { x: number; y: number } | null {
-    if (this.goal.kind === 'roam') return { x: this.goal.x, y: this.goal.y };
+    if (this.goal.kind === 'roam' || this.goal.kind === 'fortify') {
+      return { x: this.goal.x, y: this.goal.y };
+    }
     if (this.goal.kind === 'gear' || this.goal.kind === 'heal') {
       const p = world.pickups.get(this.goal.pickupId);
       if (!p || !p.active) {

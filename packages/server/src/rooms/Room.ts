@@ -463,6 +463,14 @@ export class Room {
       if (!m.bot) continue;
       const cmd = m.bot.think(this.world, stepMs);
       if (cmd) this.world.queueInput(m.playerId, [cmd]);
+      // Bots place defences through the same validation a human's request gets.
+      const request = m.bot.takeDeployRequest();
+      const entity = request ? this.world.players.get(m.playerId) : undefined;
+      if (request && entity) {
+        m.bot.onDeployResult(
+          tryDeploy(this.world, entity, request.kind, request.rot, request.aim),
+        );
+      }
     }
   }
 

@@ -13,6 +13,18 @@ export const GAMEPLAY = {
   maxCommandDtMs: 60,
   /** Max buffered unacked input commands per client. */
   maxCommandBuffer: 90,
+  /**
+   * Simulated time a player may bank while their input is late, so a burst of
+   * delayed commands is caught up at once instead of queueing behind real time.
+   * Bounds how far ahead of real time any client can ever get.
+   */
+  inputBankMs: 200,
+  /**
+   * How long a connected player may send nothing before the server moves them
+   * on its own (coasting to a stop). Shorter than this is ordinary network
+   * jitter, and moving the player then would contradict their own prediction.
+   */
+  inputStallMs: 250,
 
   player: {
     radius: 13,
@@ -99,6 +111,15 @@ export const GAMEPLAY = {
   },
 
   defences: {
+    /**
+     * Share of each team limit bots may fill, so human teammates always have
+     * defences left to place.
+     */
+    botShare: 0.5,
+    /** Chance a bot fortifies its base on the way out after (re)spawning. */
+    botFortifyChance: 0.5,
+    /** Minimum seconds between one bot's placements. */
+    botFortifyCooldownSec: 20,
     /**
      * How far outside the team's spawn zone a defence may be placed. Enough to
      * fortify the approaches to a base, not enough to build out across the map.

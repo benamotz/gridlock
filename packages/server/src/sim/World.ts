@@ -256,28 +256,39 @@ export class World {
       return;
     }
 
-    // Consume at most a bounded number of commands per tick. This is the core
-    // speed-hack defence: extra commands wait for the next tick instead of
-    // granting extra distance now.
-    const maxPerTick = 3;
-    let consumed = 0;
-    while (p.pending.length > 0 && consumed < maxPerTick) {
+    // Commands are consumed against a time budget, not a count. Each tick grants
+    // one tick of simulated time (plus a small bank for late packets), which is
+    // the speed-hack defence: no client can move faster than real time however
+    // many commands it sends.
+    //
+    // Regression: a fixed three-commands-per-tick cap throttled 120 Hz displays,
+    // which send four short commands a tick. Their input queued for most of a
+    // second and prediction had to snap vehicles by up to 140 units.
+    const tickMs = this.dt * 1000;
+    p.inputBudgetMs = Math.min(p.inputBudgetMs + tickMs, GAMEPLAY.inputBankMs);
+    while (p.pending.length > 0) {
+      const dtMs = Math.min(p.pending[0].dtMs, GAMEPLAY.maxCommandDtMs);
+      if (dtMs > p.inputBudgetMs + 1e-6) break;
       const cmd = p.pending.shift()!;
       this.applyCommand(p, cmd);
       p.lastProcessedSeq = cmd.seq;
-      consumed++;
+      p.inputBudgetMs -= dtMs;
+      p.lastInputAt = this.now;
     }
-    if (consumed === 0) {
-      // No input arrived this tick - keep simulating with the last known
-      // buttons cleared so a stalled client coasts to a stop rather than
-      // sliding forever.
+
+    // Nothing to apply. A brief gap is network jitter: the client has already
+    // predicted those frames and the commands are on their way, so moving the
+    // player now would contradict that prediction. Only a real stall coasts the
+    // player to a stop, and the stalled time is not banked.
+    if (p.pending.length === 0 && this.now - p.lastInputAt > GAMEPLAY.inputStallMs) {
       this.applyCommand(p, {
         seq: p.lastProcessedSeq,
-        dtMs: this.dt * 1000,
+        dtMs: tickMs,
         buttons: 0,
         aim: p.aim,
         slot: -1,
       });
+      p.inputBudgetMs = 0;
     }
   }
 

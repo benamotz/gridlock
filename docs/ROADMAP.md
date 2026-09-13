@@ -39,7 +39,8 @@ vertical slice:
 
 - Team Deathmatch only; Capture the Flag and Battle Royale not implemented
   (map data and the `GameMode` interface are ready).
-- Bots neither drive nor use defences.
+- Bots do not drive. They place defences (up to half of each team limit) but
+  do not repair, rotate or reposition them.
 - Guest identities only; the PostgreSQL `Store` is not written.
 - No key-rebinding UI; no music.
 - Live matches are dropped whenever the server restarts or redeploys.
