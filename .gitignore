@@ -1,0 +1,10 @@
+node_modules/
+dist/
+coverage/
+*.tsbuildinfo
+*.log
+.DS_Store
+# Real environment files never leave the machine; the example documents them.
+.env
+.env.*
+!.env.example

@@ -1,0 +1,39 @@
+import { GAMEPLAY } from '@gridlock/shared';
+import { createGameServer, type LogFn } from './app.js';
+
+/**
+ * Port resolution order: an explicit `--port` argument, then GRIDLOCK_PORT,
+ * then PORT, then the default. The argv flag comes first because some dev
+ * harnesses inject a PORT for the web client, which would otherwise collide
+ * with the game server.
+ */
+const argPort = (): number | null => {
+  const i = process.argv.indexOf('--port');
+  const raw = i >= 0 ? Number(process.argv[i + 1]) : NaN;
+  return Number.isFinite(raw) && raw > 0 ? raw : null;
+};
+
+const PORT = argPort() ?? Number(process.env.GRIDLOCK_PORT ?? process.env.PORT ?? 2567);
+const HOST = process.env.HOST ?? '0.0.0.0';
+
+const log: LogFn = (level, msg, meta) => {
+  const line = { at: new Date().toISOString(), level, msg, ...meta };
+  if (level === 'warn') console.warn(JSON.stringify(line));
+  else console.log(JSON.stringify(line));
+};
+
+const game = createGameServer({ log });
+
+void game.listen(PORT, HOST).then((port) => {
+  log('info', 'gridlock server listening', { port, host: HOST, tickHz: GAMEPLAY.tickHz });
+});
+
+const shutdown = (signal: string): void => {
+  log('info', 'shutting down', { signal });
+  void game.close().then(() => process.exit(0));
+  // Do not hang forever if a socket refuses to close.
+  setTimeout(() => process.exit(0), 3000).unref();
+};
+
+process.on('SIGINT', () => shutdown('SIGINT'));
+process.on('SIGTERM', () => shutdown('SIGTERM'));
