@@ -1,6 +1,6 @@
 import type { Rect } from '../math.js';
 import { pointInRect } from '../math.js';
-import type { GameMapDef, ZoneKind } from '../types.js';
+import type { GameMapDef, RoadGraph, ZoneKind } from '../types.js';
 import { MapBuilder } from './builder.js';
 
 const W = 5120;
@@ -242,8 +242,33 @@ export function buildHarborCity(): GameMapDef {
       captureRadius: 80,
     })),
     safeZone: { x: 3200, y: 2400, startRadius: 3000 },
-    modes: ['tdm', 'ctf', 'br'],
+    modes: ['tdm', 'ctf', 'br', 'freeroam'],
+    roads: buildRoadGraph(),
     recommendedPlayers: 16,
     maxTeams: 4,
   };
+}
+
+/**
+ * Interior intersections of the avenue/street grid. The border roads are left
+ * out because the boundary wall runs down their middle. The canal column keeps
+ * its nodes (the bridges) but has no north-south edges, since the canal itself
+ * is in the way. Segments that cross other obstacles, such as the harbour, are
+ * pruned by the server against real collision geometry.
+ */
+function buildRoadGraph(): RoadGraph {
+  const xs: number[] = [];
+  const ys: number[] = [];
+  for (let x = AVENUE; x < W; x += AVENUE) xs.push(x);
+  for (let y = STREET; y < H; y += STREET) ys.push(y);
+  const nodes = ys.flatMap((y) => xs.map((x) => ({ x, y })));
+  const at = (col: number, row: number) => row * xs.length + col;
+  const edges: [number, number][] = [];
+  for (let row = 0; row < ys.length; row++) {
+    for (let col = 0; col < xs.length; col++) {
+      if (col + 1 < xs.length) edges.push([at(col, row), at(col + 1, row)]);
+      if (row + 1 < ys.length && xs[col] !== CANAL_X) edges.push([at(col, row), at(col, row + 1)]);
+    }
+  }
+  return { nodes, edges };
 }

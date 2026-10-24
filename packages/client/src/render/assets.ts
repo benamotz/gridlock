@@ -35,6 +35,8 @@ export const GROUND = {
     park:        { fill: '#223628' },
     water:       { fill: '#132437' },
     base:        { fill: '#2c2936' },
+    grass:       { fill: '#1f3122' },
+    sand:        { fill: '#4a4232' },
   } as Record<ZoneKind, ZoneStyle>,
   /** Warm pools cast by street lamps along the avenues. */
   lampGlow: 'rgba(255,206,140,0.055)',
@@ -91,6 +93,26 @@ export const WORLD = {
   background: '#0d0f14',
   outOfBounds: '#070810',
 };
+
+/**
+ * City residents wear muted everyday colours, so a crowd reads as a crowd and
+ * never as a team; officers share one uniform.
+ */
+export const RESIDENT = {
+  clothes: ['#8a6f5a', '#5f7a8c', '#7d8a5f', '#9a6b7a', '#6b6f80', '#a08a5c', '#5c8a80', '#8c5f5f'],
+  police: '#2b4c9b',
+  squadCar: '#1d2a44',
+  /** Armed crew: dark jackets, so a gunman reads differently from a passer-by. */
+  crew: '#4a2a2a',
+  /** The cash van in an armored-truck job. */
+  securityVan: '#6b6f78',
+  securityStripe: '#feca57',
+};
+
+export const residentColor = (npc: 'ped' | 'cop' | 'thug', look: number): string =>
+  npc === 'cop' ? RESIDENT.police
+    : npc === 'thug' ? RESIDENT.crew
+      : RESIDENT.clothes[look % RESIDENT.clothes.length];
 
 export const PLAYER = {
   radius: 13,

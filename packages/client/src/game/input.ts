@@ -6,7 +6,8 @@ export type ActionId =
   | 'slot1' | 'slot2' | 'slot3' | 'slot4'
   | 'scoreboard' | 'map' | 'menu' | 'chat'
   | 'deployBarricade' | 'deployTurret' | 'deployMine'
-  | 'jump' | 'useMedkit' | 'useArmor';
+  | 'jump' | 'useMedkit' | 'useArmor'
+  | 'phoneAccept' | 'phoneDecline';
 
 /**
  * Default bindings.
@@ -35,6 +36,8 @@ export const DEFAULT_BINDINGS: Record<ActionId, string[]> = {
   jump: ['Space'],
   useMedkit: ['KeyH'],
   useArmor: ['KeyG'],
+  phoneAccept: ['KeyY'],
+  phoneDecline: ['KeyN'],
   scoreboard: ['Tab'],
   map: ['KeyM'],
   menu: ['Escape'],
@@ -68,6 +71,8 @@ export interface InputCallbacks {
   onMenu(): void;
   onChat(): void;
   onDeploy(kind: DeployableKind): void;
+  /** Answer the free-roam cellphone. */
+  onPhone?(accept: boolean): void;
   /**
    * The following let a mode (defence placement) claim input before it reaches
    * gameplay. Each returns true when it consumed the event.
@@ -174,6 +179,8 @@ export class InputManager {
       if (this.matches('deployBarricade', e.code)) this.callbacks.onDeploy('barricade');
       if (this.matches('deployTurret', e.code)) this.callbacks.onDeploy('turret');
       if (this.matches('deployMine', e.code)) this.callbacks.onDeploy('mine');
+      if (this.matches('phoneAccept', e.code)) this.callbacks.onPhone?.(true);
+      if (this.matches('phoneDecline', e.code)) this.callbacks.onPhone?.(false);
 
       for (const [action, slot] of [
         ['slot1', 0], ['slot2', 1], ['slot3', 2], ['slot4', 3],

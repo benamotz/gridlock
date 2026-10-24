@@ -1,6 +1,7 @@
 import type { GameModeId, MatchConfig } from '@gridlock/shared';
 import type { GameMode } from './GameMode.js';
 import { TeamDeathmatch } from './TeamDeathmatch.js';
+import { FreeRoam } from './FreeRoam.js';
 
 /**
  * Mode registry.
@@ -11,6 +12,7 @@ import { TeamDeathmatch } from './TeamDeathmatch.js';
  */
 const factories: Partial<Record<GameModeId, (c: MatchConfig) => GameMode>> = {
   tdm: (c) => new TeamDeathmatch(c),
+  freeroam: (c) => new FreeRoam(c),
 };
 
 export function createMode(config: MatchConfig): GameMode {

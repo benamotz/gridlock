@@ -12,6 +12,7 @@ import {
   vehicleDef,
   weaponDef,
 } from '@gridlock/shared';
+import { clearWanted, reportCrime } from './wanted.js';
 import type {
   DeployableEntity, PlayerEntity, ProjectileEntity, VehicleEntity,
 } from './entities.js';
@@ -69,8 +70,12 @@ export function traceShot(
     }
   }
 
+  // A crew's shots pass through its own members, who cannot be hurt by them
+  // anyway; otherwise a guard standing in front soaked every bullet.
+  const shooterIsCrew = world.players.get(ignoreId)?.npc === 'thug';
   for (const p of world.players.values()) {
     if (p.id === ignoreId || p.life !== 'alive') continue;
+    if (shooterIsCrew && p.npc === 'thug') continue;
     // Mid-jump, bullets pass beneath the player.
     if (isEvading(p)) continue;
     if (p.vehicleId !== null) {
@@ -332,6 +337,8 @@ export function applyPlayerDamage(
   if (!world.canDamage(attacker, target)) return;
 
   let amount = Math.max(0, rawAmount);
+  // Crews are many against one; their shots are scaled so a fight is a fight.
+  if (attacker?.npc === 'thug' && !target.npc) amount *= GAMEPLAY.crew.damageScale;
   if (amount <= 0) return;
 
   // Armor soaks a fraction of each hit until it runs out.
@@ -358,6 +365,8 @@ export function applyPlayerDamage(
     target.damageTakenFrom.set(attacker.id, rec);
     attacker.stats.damageDealt += amount;
     world.emit({ e: 'damage', to: target.id, amount, fromX: attacker.x, fromY: attacker.y });
+    reportCrime(world, attacker, 'assault', target);
+    world.city?.onHurt(target, attacker, weapon);
   } else {
     world.emit({ e: 'damage', to: target.id, amount, fromX: target.x, fromY: target.y });
   }
@@ -416,6 +425,8 @@ export function destroyVehicle(
 
   const def = vehicleDef(v.type);
   const credit = wreckCredit(world, v, attacker);
+  // Wrecking a ride you are in is a crash, not vandalism.
+  if (credit && credit.vehicleId !== v.id) reportCrime(world, credit, 'vandalism');
   // Riders are thrown clear; less violently from something that does not explode.
   ejectOccupants(world, v, true, undefined, credit, def.wreckBlast > 0 ? 25 : 15);
 
@@ -468,7 +479,14 @@ export function killPlayer(
   victim.armorPlates = 0;
 
   const isSuicide = !killer || killer.id === victim.id;
-  if (!isSuicide && killer) {
+  // City residents are not opponents: killing one is a crime, never a score.
+  const residentVictim = victim.npc !== null;
+  // Judged before the victim's own level is wiped: killing a wanted player
+  // is not murder.
+  if (!isSuicide && killer) reportCrime(world, killer, 'murder', victim);
+  if (residentVictim) {
+    // No score, streak or assists for residents.
+  } else if (!isSuicide && killer) {
     killer.stats.kills++;
     killer.stats.streak++;
     killer.stats.bestStreak = Math.max(killer.stats.bestStreak, killer.stats.streak);
@@ -481,6 +499,7 @@ export function killPlayer(
   // Assists: recent, meaningful damage from anyone who was not the killer.
   const cutoff = world.now - GAMEPLAY.combat.assistWindowSec * 1000;
   for (const [attackerId, rec] of victim.damageTakenFrom) {
+    if (residentVictim) break;
     if (attackerId === killer?.id || attackerId === victim.id) continue;
     if (rec.at < cutoff || rec.amount < GAMEPLAY.combat.assistMinDamage) continue;
     const assister = world.players.get(attackerId);
@@ -490,7 +509,8 @@ export function killPlayer(
   }
   victim.damageTakenFrom.clear();
 
-  world.emit({
+  // A resident's death would flood the feed; players read it for each other.
+  if (!residentVictim) world.emit({
     e: 'kill',
     killer: isSuicide ? victim.name : killer!.name,
     victim: victim.name,
@@ -504,6 +524,8 @@ export function killPlayer(
   const delay = world.onKill
     ? world.onKill(victim, isSuicide ? null : killer)
     : world.config.respawnDelaySec * 1000;
+  // Cleared only now, so the kill hook can still pay a bounty on it.
+  clearWanted(victim);
   if (delay === null) {
     victim.life = 'spectating';
     return;

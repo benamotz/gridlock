@@ -1,5 +1,5 @@
 import { Fragment } from 'react';
-import { TEAM_PRESETS, type ScoreEntry } from '@gridlock/shared';
+import { NO_TEAM, TEAM_PRESETS, type ScoreEntry } from '@gridlock/shared';
 import { useStore } from '../store.js';
 import { teamColorFor } from '../render/assets.js';
 
@@ -13,7 +13,12 @@ interface Props {
 export function Scoreboard({ entries, teamScores, inline }: Props): React.ReactElement {
   const { playerId, settings, config } = useStore();
 
-  const teams = Array.from({ length: Math.max(1, config.teamCount) }, (_, t) => t);
+  // Free roam is one free-for-all list (every entry is NO_TEAM, no header),
+  // ranked by cash on the server.
+  const freeRoam = config.mode === 'freeroam';
+  const teams = freeRoam
+    ? [NO_TEAM]
+    : Array.from({ length: Math.max(1, config.teamCount) }, (_, t) => t);
 
   const body = (
     <div className="board">
@@ -27,6 +32,7 @@ export function Scoreboard({ entries, teamScores, inline }: Props): React.ReactE
             <th className="num">A</th>
             <th className="num">Best streak</th>
             <th className="num">Damage</th>
+            {freeRoam && <th className="num">Cash</th>}
           </tr>
         </thead>
         <tbody>
@@ -36,7 +42,7 @@ export function Scoreboard({ entries, teamScores, inline }: Props): React.ReactE
             const color = teamColorFor(team, settings.colorblind);
             return (
               <Fragment key={team}>
-                <tr
+                {team >= 0 && <tr
                   className="team-head"
                   key={`h${team}`}
                   style={{ '--team': color } as React.CSSProperties}
@@ -46,7 +52,7 @@ export function Scoreboard({ entries, teamScores, inline }: Props): React.ReactE
                   </td>
                   <td className="num" style={{ color }}>{teamScores[team] ?? 0}</td>
                   <td colSpan={5} />
-                </tr>
+                </tr>}
                 {roster.map((e) => (
                   <tr key={e.playerId} className={e.playerId === playerId ? 'you' : ''}>
                     <td>
@@ -62,6 +68,7 @@ export function Scoreboard({ entries, teamScores, inline }: Props): React.ReactE
                     <td className="num">{e.stats.assists}</td>
                     <td className="num">{e.stats.bestStreak}</td>
                     <td className="num">{Math.round(e.stats.damageDealt)}</td>
+                    {freeRoam && <td className="num">${(e.cash ?? 0).toLocaleString('en-US')}</td>}
                   </tr>
                 ))}
               </Fragment>

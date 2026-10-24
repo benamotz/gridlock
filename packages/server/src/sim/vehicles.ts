@@ -11,6 +11,7 @@ import type { PlayerEntity, VehicleEntity } from './entities.js';
 import type { World } from './World.js';
 import { applyPlayerDamage, applyVehicleDamage } from './combat.js';
 import { damageDeployable } from './deployables.js';
+import { onVehicleSwap, reportCrime } from './wanted.js';
 
 /**
  * Distance from a point to the surface of a vehicle's body - negative when the
@@ -58,16 +59,27 @@ export function tryEnterExitVehicle(world: World, p: PlayerEntity): void {
   if (!world.config.vehiclesEnabled) return;
 
   const best = nearestBoardable(world, p);
-  if (!best) return;
+  if (!best) {
+    const target = nearestCarjackable(world, p);
+    if (target) carjack(world, p, target);
+    return;
+  }
 
   if (best.driverId === null) best.driverId = p.id;
   else best.passengers.push(p.id);
   p.vehicleId = best.id;
+  onVehicleSwap(world, p, best.id);
   p.vx = 0;
   p.vy = 0;
   // Boarding lands a jump; otherwise the rider would stay "airborne" all ride.
   p.air = 0;
   syncOccupants(world, best);
+}
+
+/** A city resident at the wheel: the car is theirs until somebody takes it. */
+function residentDriver(world: World, v: VehicleEntity): PlayerEntity | null {
+  const d = v.driverId ? world.players.get(v.driverId) : undefined;
+  return d && d.npc && d.life === 'alive' ? d : null;
 }
 
 function nearestBoardable(world: World, p: PlayerEntity): VehicleEntity | null {
@@ -76,6 +88,8 @@ function nearestBoardable(world: World, p: PlayerEntity): VehicleEntity | null {
   let bestD = Infinity;
   for (const v of world.vehicles.values()) {
     if (v.destroyed) continue;
+    // Nobody hitches a ride with a stranger; their car can only be taken.
+    if (residentDriver(world, v)) continue;
     const occupied = (v.driverId ? 1 : 0) + v.passengers.length;
     if (occupied >= vehicleDef(v.type).seats) continue;
     const d = vehicleSurfaceDistance(v, p.x, p.y).d;
@@ -87,6 +101,44 @@ function nearestBoardable(world: World, p: PlayerEntity): VehicleEntity | null {
   return best;
 }
 
+function nearestCarjackable(world: World, p: PlayerEntity): VehicleEntity | null {
+  if (!world.lawEnabled || p.npc) return null;
+  const range = GAMEPLAY.player.interactRange;
+  let best: VehicleEntity | null = null;
+  let bestD = Infinity;
+  for (const v of world.vehicles.values()) {
+    if (v.destroyed || !residentDriver(world, v)) continue;
+    const d = vehicleSurfaceDistance(v, p.x, p.y).d;
+    if (d < range && d < bestD) {
+      best = v;
+      bestD = d;
+    }
+  }
+  return best;
+}
+
+/**
+ * Pulls the resident driver (and any resident riders) out and takes the wheel.
+ * The victim is left on the kerb to flee or, if they were police, to give chase.
+ */
+function carjack(world: World, p: PlayerEntity, v: VehicleEntity): void {
+  const victim = residentDriver(world, v);
+  if (!victim) return;
+  for (const id of [v.driverId, ...v.passengers]) {
+    const rider = id ? world.players.get(id) : undefined;
+    if (rider?.npc) exitVehicle(world, rider);
+  }
+  if (v.driverId === null) v.driverId = p.id;
+  else v.passengers.push(p.id);
+  p.vehicleId = v.id;
+  p.vx = 0;
+  p.vy = 0;
+  p.air = 0;
+  syncOccupants(world, v);
+  reportCrime(world, p, 'carjack', victim);
+  onVehicleSwap(world, p, v.id);
+}
+
 /**
  * The interaction hint for the nearest vehicle a player on foot could board,
  * naming its category and seats so the choice is informed before pressing E.
@@ -96,7 +148,10 @@ export function vehiclePrompt(world: World, p: PlayerEntity): string | null {
     return null;
   }
   const best = nearestBoardable(world, p);
-  if (!best) return null;
+  if (!best) {
+    const target = nearestCarjackable(world, p);
+    return target ? `E - Steal ${vehicleDef(target.type).category}` : null;
+  }
 
   const def = vehicleDef(best.type);
   const free = def.seats - ((best.driverId ? 1 : 0) + best.passengers.length);

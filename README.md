@@ -58,6 +58,7 @@ Empty slots fill with bots, so a single player can start a match immediately via
 | Sprint | `Shift` (consumes stamina) |
 | Reload | `R` |
 | Enter / exit vehicle | `E` |
+| Answer the cellphone (free roam) | `Y` take the job, `N` pass |
 | Swap for a weapon on the ground | `F` |
 | Weapon slots | `1`–`4`, or mouse wheel |
 | Jump (bullets pass beneath you mid-jump) | `Space` |

@@ -34,6 +34,13 @@ const VOICES: Record<string, Voice> = {
   reload:    { freq: 700, endFreq: 320, type: 'square',   duration: 0.14, gain: 0.16, noise: 0.35, cutoff: 4200 },
   pickup:    { freq: 620, endFreq: 980, type: 'sine',     duration: 0.14, gain: 0.22, noise: 0.05 },
   hitmark:   { freq: 1250, endFreq: 900, type: 'square',   duration: 0.06, gain: 0.20, noise: 0.05 },
+  // Two-tone rise when a crime adds heat.
+  // A short trill when the cellphone rings with a job.
+  ring:      { freq: 1320, endFreq: 1180, type: 'square', duration: 0.18, gain: 0.16, noise: 0 },
+  // Money in: a bright blip, and a richer chime for a big score.
+  cash:      { freq: 1500, endFreq: 2100, type: 'triangle', duration: 0.12, gain: 0.2, noise: 0 },
+  cashBig:   { freq: 880, endFreq: 1760, type: 'triangle', duration: 0.4, gain: 0.26, noise: 0 },
+  wanted:    { freq: 620, endFreq: 980, type: 'triangle', duration: 0.32, gain: 0.24, noise: 0 },
   killmark:  { freq: 900, endFreq: 1500, type: 'square',   duration: 0.13, gain: 0.26, noise: 0.05 },
   hurt:      { freq: 210, endFreq: 90,  type: 'triangle', duration: 0.18, gain: 0.30, noise: 0.45, cutoff: 1400 },
   death:     { freq: 320, endFreq: 70,  type: 'sawtooth', duration: 0.42, gain: 0.30, noise: 0.4, cutoff: 1600 },

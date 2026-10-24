@@ -1,5 +1,6 @@
 import {
   DEFAULT_MATCH_CONFIG,
+  FREEROAM_CONFIG,
   GAMEPLAY,
   type MatchConfig,
   PRACTICE_CONFIG,
@@ -28,6 +29,7 @@ export interface JoinOutcome {
  */
 export class RoomManager {
   private rooms = new Map<string, Room>();
+  private city: Room | null = null;
 
   constructor(
     private readonly store: Store,
@@ -93,10 +95,37 @@ export class RoomManager {
     return this.createRoom(playerId, { ...QUICKPLAY_CONFIG }, false);
   }
 
+  /**
+   * The always-on city. Opened on first request and never closed after that,
+   * so the world keeps running between visitors. It is exempt from the room
+   * cap: refusing the one shared world because private matches filled the
+   * server would be the wrong way round.
+   */
+  freeRoam(): Room {
+    if (this.city) return this.city;
+    const code = generateRoomCode((c) => this.rooms.has(c));
+    const room = new Room({
+      code,
+      hostId: '',
+      isPrivate: false,
+      persistent: true,
+      config: { ...FREEROAM_CONFIG },
+      store: this.store,
+      onEmpty: (r) => {
+        this.rooms.delete(r.code);
+        if (this.city === r) this.city = null;
+      },
+    });
+    this.rooms.set(code, room);
+    this.city = room;
+    return room;
+  }
+
   /** The joinable public room quick-play would pick, if there is one. */
   bestPublicRoom(): Room | undefined {
     return this.list()
-      .filter((r) => !r.isPrivate && r.isJoinable)
+      // The city is entered on purpose, never as a quick-play fallback.
+      .filter((r) => !r.isPrivate && !r.persistent && r.isJoinable)
       // Prefer the fullest room so matches fill rather than fragmenting.
       .sort((a, b) => b.humanCount - a.humanCount)[0];
   }
@@ -126,6 +155,7 @@ export class RoomManager {
   shutdown(): void {
     for (const r of this.list()) r.close();
     this.rooms.clear();
+    this.city = null;
   }
 }
 

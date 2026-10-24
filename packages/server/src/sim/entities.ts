@@ -3,6 +3,9 @@ import {
   type DeployableKind,
   type SolidDef,
   type InputCommand,
+  type JobWire,
+  type PhoneOfferWire,
+  type NpcKind,
   type PickupKind,
   type PlayerLifeState,
   type PlayerStats,
@@ -86,6 +89,57 @@ export interface PlayerEntity {
   pouchReadyAt: number;
   medkitHeld: boolean;
   armorHeld: boolean;
+
+  /** Free-roam wanted heat; stars derive from it (see `wanted.ts`). */
+  heat: number;
+  /** Sim time the wanted level next drops a star, while heat > 0. */
+  nextCoolAt: number;
+  /** Sim time of the last crime; cooling starts `coolDelaySec` after it. */
+  lastCrimeAt: number;
+  /** Victim id -> sim time of the last assault on them that counted. */
+  assaultedAt: Map<string, number>;
+
+  /** Set for computer-controlled city residents; null for real players. */
+  npc: NpcKind | null;
+  /** Resident clothing variant. */
+  look: number;
+  /** Sim time a police officer last saw this suspect. */
+  lastSeenAt: number;
+  /** Town whose police want this player (map `towns` index), -1 when none. */
+  heatTown: number;
+  /**
+   * Where the police last knew this suspect to be: the crime scene, then each
+   * sighting. Officers who lose sight search here rather than following the
+   * suspect for free.
+   */
+  lkpX: number;
+  lkpY: number;
+  /** Sim time units may be sent: a crime nobody saw is reported late. */
+  reportAt: number;
+  /** The vehicle officers last saw this suspect in, -1 for none. */
+  knownVehicleId: number;
+  /** Sim time of the last unseen car swap that cost a star. */
+  lastSwapAt: number;
+
+  /** Free-roam money: a player's cash, a resident's wallet. */
+  cash: number;
+  /** A pedestrian who has already been robbed has nothing left to hand over. */
+  mugged: boolean;
+  /** Earliest time this player may sell another car to a chop shop. */
+  chopReadyAt: number;
+  /** Store hold-up in progress: which store, and for how long. */
+  holdupStore: string | null;
+  holdupMs: number;
+  /** Set on a resident who is some player's hit-job target. */
+  markedFor: string | null;
+  /** The phone-booth job this player is on, as the HUD shows it. */
+  job: JobWire | null;
+  /** Bought a cellphone this visit: job offers ring in anywhere. */
+  hasPhone: boolean;
+  /** The call ringing right now, as the HUD shows it. */
+  phoneOffer: PhoneOfferWire | null;
+  /** Sim time the cellphone may ring with the next offer. */
+  nextOfferAt: number;
 }
 
 export function createPlayer(
@@ -111,6 +165,11 @@ export function createPlayer(
     lastProcessedSeq: 0, pending: [], inputBudgetMs: 0, lastInputAt: 0, lastButtons: 0,
     prompt: null, swapCandidate: null, deployCooldowns: {},
     medkits: 0, armorPlates: 0, pouchReadyAt: 0, medkitHeld: false, armorHeld: false,
+    heat: 0, nextCoolAt: 0, lastCrimeAt: 0, assaultedAt: new Map(),
+    npc: null, look: 0, lastSeenAt: 0, heatTown: -1,
+    lkpX: 0, lkpY: 0, reportAt: 0, knownVehicleId: -1, lastSwapAt: -Infinity,
+    cash: 0, mugged: false, chopReadyAt: 0, holdupStore: null, holdupMs: 0, markedFor: null,
+    job: null, hasPhone: false, phoneOffer: null, nextOfferAt: 0,
   };
 }
 
@@ -169,6 +228,12 @@ export interface VehicleEntity {
   lastDamagedBy: string | null;
   /** When `lastDamagedBy` last hurt it, so stale credit expires. */
   lastDamagedAt: number;
+  /** Squad car livery. */
+  police?: boolean;
+  /** Security van livery: the cash truck in an armored-truck job. */
+  security?: boolean;
+  /** Kept around (not recycled) while this player's job needs it. */
+  protectedFor?: string;
 }
 
 export interface ProjectileEntity {
@@ -215,4 +280,28 @@ export interface PickupEntity {
    * Set the instant a claim is accepted, before any state is granted.
    */
   claimedBy: string | null;
+}
+
+/** Cash lying in the street, from a wallet, a body or a dropped bag. */
+export interface MoneyDrop {
+  id: number;
+  x: number;
+  y: number;
+  amount: number;
+  expiresAt: number;
+  /** A moment's delay, so the person it fell from cannot grab it straight back. */
+  availableAt: number;
+}
+
+/**
+ * Free-roam rules the generic simulation calls into without depending on
+ * them: hurting someone, pressing interact, and the HUD prompt.
+ */
+export interface CityHooks {
+  onHurt(target: PlayerEntity, attacker: PlayerEntity | null, weapon: WeaponId): void;
+  /** True when the interact press was used (so it does not also board a vehicle). */
+  interact(p: PlayerEntity): boolean;
+  prompt(p: PlayerEntity): string | null;
+  /** The cellphone was answered: take the job on offer, or turn it down. */
+  answerPhone(p: PlayerEntity, accept: boolean): void;
 }

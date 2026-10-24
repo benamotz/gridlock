@@ -4,6 +4,7 @@ import { useStore } from '../store.js';
 
 interface Props {
   onQuickPlay(): void;
+  onFreeRoam(): void;
   onCreate(config: Partial<MatchConfig>, isPrivate: boolean): void;
   onJoin(code: string): void;
   onPractice(): void;
@@ -64,6 +65,14 @@ export function MainMenu(props: Props): React.ReactElement {
           <div className="menu-grid">
             <button
               className="btn primary big"
+              disabled={status !== 'connected'}
+              onClick={() => { commitName(); props.onFreeRoam(); }}
+              title="The always-on city: drop in, roam, and meet whoever is there"
+            >
+              Enter the City
+            </button>
+            <button
+              className="btn big"
               disabled={status !== 'connected'}
               onClick={() => { commitName(); props.onQuickPlay(); }}
             >
@@ -127,7 +136,8 @@ export function MainMenu(props: Props): React.ReactElement {
           <div className="col">
             <p className="section-title">Map</p>
             <div className="map-picker">
-              {maps.map((m) => (
+              {/* The free-roam region is entered from "Enter the City", not hosted. */}
+              {maps.filter((m) => m.modes.includes(config.mode)).map((m) => (
                 <button
                   key={m.id}
                   className={`map-card${config.mapId === m.id ? ' active' : ''}`}

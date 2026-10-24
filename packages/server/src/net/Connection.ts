@@ -178,6 +178,20 @@ export class Connection {
         break;
       }
 
+      case 'free_roam': {
+        const city = this.deps.rooms.freeRoam();
+        if (this.room === city) break;
+        if (city.isFull && !city.members.has(this.session.playerId)) {
+          return this.fail(
+            'city_full',
+            `The city is full (${GAMEPLAY.freeRoam.maxPlayers} players). Try again in a minute.`,
+          );
+        }
+        this.leaveCurrentRoom();
+        this.enter(city);
+        break;
+      }
+
       case 'practice': {
         if (this.deps.rooms.atCapacity) return this.fail('server_full', SERVER_FULL);
         this.leaveCurrentRoom();
@@ -228,6 +242,10 @@ export class Connection {
         });
         break;
       }
+
+      case 'phone':
+        this.room?.handlePhone(this.session.playerId, msg.answer === 'accept');
+        break;
 
       case 'deploy':
       {

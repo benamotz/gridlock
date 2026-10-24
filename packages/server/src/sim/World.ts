@@ -8,25 +8,32 @@ import {
   type MatchConfig,
   commandAxes,
   makeRng,
+  type NpcKind,
+  NO_TEAM,
   stepPlayerMovement,
+  type VehicleTypeId,
+  type WeaponId,
   vehicleDef,
   weaponDef,
 } from '@gridlock/shared';
 import {
+  type CityHooks,
   type DeployableEntity,
+  type MoneyDrop,
   type PickupEntity,
   type PlayerEntity,
   type ProjectileEntity,
   type VehicleEntity,
   createPlayer,
 } from './entities.js';
-import { buildLoadout, bestSlot } from './loadout.js';
+import { SLOT_MELEE, SLOT_SIDEARM, buildLoadout, bestSlot, freshWeapon } from './loadout.js';
 import { selectSpawn } from './spawn.js';
 import { fireWeapon, startReload, stepProjectiles, tryFinishReload } from './combat.js';
 import {
   initPickups, stepPickups, tryClaimPickups, useArmorPlate, useMedkit,
 } from './pickups.js';
 import { destroyDeployable, stepDeployables } from './deployables.js';
+import { clearWanted, stepWanted } from './wanted.js';
 import {
   driveVehicle, stepVehicles, tryEnterExitVehicle, vehiclePrompt,
 } from './vehicles.js';
@@ -61,6 +68,13 @@ export class World {
   /** Map vehicle spawn points waiting to re-arm after a wreck cleared. */
   readonly pendingVehicleSpawns: { spawnIndex: number; at: number }[] = [];
 
+  /** Crimes and wanted levels exist only in the free-roam city. */
+  readonly lawEnabled: boolean;
+  /** Free-roam cash in the street. */
+  readonly moneyDrops = new Map<number, MoneyDrop>();
+  /** Installed by the free-roam mode; null in team modes. */
+  city: CityHooks | null = null;
+
   tick = 0;
   /** Simulated match clock in ms; the single source of time for all systems. */
   now = 0;
@@ -77,6 +91,7 @@ export class World {
     this.grid = new CollisionGrid(mapDef);
     this.rng = makeRng(seed);
     this.dt = 1 / GAMEPLAY.tickHz;
+    this.lawEnabled = config.mode === 'freeroam';
     initPickups(this);
     if (config.vehiclesEnabled) this.spawnAllVehicles();
   }
@@ -127,8 +142,11 @@ export class World {
       return;
     }
     const others = [...this.players.values()]
-      .filter((o) => o.id !== p.id)
-      .map((o) => ({ x: o.x, y: o.y, team: o.team, alive: o.life === 'alive' }));
+      // Officers are worth spawning away from; passers-by are not.
+      .filter((o) => o.id !== p.id && o.npc !== 'ped')
+      .map((o) => ({
+        x: o.x, y: o.y, team: o.team, alive: o.life === 'alive', npc: o.npc !== null,
+      }));
     const point = selectSpawn(this.mapDef, this.grid, p.team, others, this.rng);
 
     p.x = point.x;
@@ -156,11 +174,58 @@ export class World {
     p.vehicleId = null;
     p.damageTakenFrom.clear();
     p.stats.streak = 0;
+    clearWanted(p);
+  }
+
+  /**
+   * Adds a computer-controlled city resident at an exact spot. Residents skip
+   * spawn selection and loadouts: a pedestrian is unarmed, an officer carries
+   * a sidearm, and neither carries consumables to drop.
+   */
+  addNpc(
+    id: string, name: string, kind: NpcKind, x: number, y: number,
+    hp: number, weapon: WeaponId | null, look = 0,
+  ): PlayerEntity {
+    const p = createPlayer(id, name, NO_TEAM, false);
+    p.npc = kind;
+    p.look = look;
+    p.x = x;
+    p.y = y;
+    p.hp = hp;
+    p.life = 'alive';
+    p.stamina = GAMEPLAY.player.staminaMax;
+    p.slots[SLOT_MELEE] = freshWeapon('fists');
+    if (weapon) {
+      p.slots[SLOT_SIDEARM] = freshWeapon(weapon);
+      p.slot = SLOT_SIDEARM;
+    }
+    this.players.set(id, p);
+    return p;
   }
 
   // -------------------------------------------------------------------------
   // Vehicles
   // -------------------------------------------------------------------------
+
+  /** A vehicle that is not tied to a map spawn point, such as city traffic. */
+  addVehicle(type: VehicleTypeId, x: number, y: number, rot: number): VehicleEntity {
+    const def = vehicleDef(type);
+    const v: VehicleEntity = {
+      id: this.allocId(),
+      type,
+      x, y, rot,
+      vx: 0, vy: 0,
+      hp: def.durability, maxHp: def.durability,
+      driverId: null, passengers: [],
+      destroyed: false, despawnAt: 0, respawnAt: 0,
+      // No home spawn: a wreck is cleared and never comes back.
+      spawnIndex: -1,
+      lastDamagedBy: null,
+      lastDamagedAt: 0,
+    };
+    this.vehicles.set(v.id, v);
+    return v;
+  }
 
   private spawnAllVehicles(): void {
     this.mapDef.vehicleSpawns.forEach((s, i) => this.spawnVehicle(i));
@@ -221,6 +286,7 @@ export class World {
     stepDeployables(this);
     stepProjectiles(this);
     stepPickups(this);
+    if (this.lawEnabled) stepWanted(this);
 
     // Trim the kill feed to the window the HUD displays.
     while (this.killFeed.length > 0 && this.now - this.killFeed[0].at > 8000) {
@@ -326,18 +392,23 @@ export class World {
     if (reloadHeld && !inVehicle) startReload(this, p);
 
     const interactHeld = (cmd.buttons & Btn.Interact) !== 0;
-    if (interactHeld && !p.interactPressed) tryEnterExitVehicle(this, p);
+    if (interactHeld && !p.interactPressed) {
+      // A shop counter or phone booth takes the press before any vehicle does.
+      const used = !inVehicle && !p.npc && this.city?.interact(p) === true;
+      if (!used) tryEnterExitVehicle(this, p);
+    }
     p.interactPressed = interactHeld;
 
     const swapHeld = (cmd.buttons & Btn.Swap) !== 0;
-    if (swapHeld && !p.swapPressed && !inVehicle) tryClaimPickups(this, p, true);
+    if (swapHeld && !p.swapPressed && !inVehicle && !p.npc) tryClaimPickups(this, p, true);
     p.swapPressed = swapHeld;
 
     // Automatic pickups (ammo, health, armor, empty weapon slots) every tick.
-    if (!inVehicle) tryClaimPickups(this, p, false);
+    // Residents walk past them: the city's loot is for players.
+    if (!inVehicle && !p.npc) tryClaimPickups(this, p, false);
     // Nothing to pick up here - advertise a nearby vehicle instead.
     if (inVehicle) p.prompt = null;
-    else if (!p.prompt) p.prompt = vehiclePrompt(this, p);
+    else if (!p.prompt && !p.npc) p.prompt = this.city?.prompt(p) ?? vehiclePrompt(this, p);
 
     // Consumables are edge-triggered, so holding the key uses exactly one.
     const medkitHeld = (cmd.buttons & Btn.UseMedkit) !== 0;
@@ -370,6 +441,9 @@ export class World {
   canDamage(attacker: PlayerEntity | null, target: PlayerEntity): boolean {
     if (!attacker) return true;
     if (attacker.id === target.id) return true;
+    // Crew members never hurt each other: surrounding a target in a crossfire
+    // once had a hideout crew wipe itself out before the player fired a shot.
+    if (attacker.npc === 'thug' && target.npc === 'thug') return false;
     if (attacker.team < 0 || target.team < 0) return true;
     if (attacker.team !== target.team) return true;
     return this.config.friendlyFire;

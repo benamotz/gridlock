@@ -1,6 +1,9 @@
 import {
   CollisionGrid,
+  GAMEPLAY,
   type GameMapDef,
+  type JobWire,
+  type MoneyWire,
   type PickupWire,
   type DeployableWire,
   type PlayerWire,
@@ -18,14 +21,15 @@ import { drawActorBody, drawCorpse, drawPickupIcon, drawVehicle, shade } from '.
 import type { PlacementGhost } from '../game/placement.js';
 import { COLLECT_ANIM_MS, type CollectAnim } from '../game/collection.js';
 import { drawWeaponIconCanvas } from './weaponIcons.js';
+import { drawJob, drawMarked, drawMoney, drawServices } from './cityLayer.js';
 import {
-  FX, PICKUP_STYLE, PLAYER, VEHICLE, WORLD, teamColorFor, teamSymbol,
+  FX, PICKUP_STYLE, PLAYER, RESIDENT, VEHICLE, WORLD, residentColor, teamColorFor, teamSymbol,
 } from './assets.js';
 
 /** A short-lived visual effect spawned from a server event or a local action. */
 export interface Effect {
   kind: 'tracer' | 'impact' | 'explosion' | 'muzzle' | 'pickup' | 'blood'
-    | 'shell' | 'damageNumber' | 'dust';
+    | 'shell' | 'damageNumber' | 'dust' | 'cash';
   /** Text for `damageNumber` effects. */
   text?: string;
   x: number;
@@ -64,6 +68,10 @@ export interface RenderState {
   deployables: DeployableWire[];
   projectiles: ProjectileWire[];
   pickups: PickupWire[];
+  /** Free-roam cash lying in the street. */
+  money: MoneyWire[];
+  /** The local player's phone-booth job, if any. */
+  job: JobWire | null;
   effects: Effect[];
   colorblind: boolean;
   screenShake: boolean;
@@ -142,6 +150,8 @@ export class Renderer {
     const cull: Rect = { x: view.x - 96, y: view.y - 96, w: view.w + 192, h: view.h + 192 };
 
     this.statics.drawInto(ctx, cull);
+    if (s.map.services) drawServices(ctx, s.map.services, cull, s.time);
+    drawMoney(ctx, s.money, cull, s.time);
     this.drawPickups(s, cull);
     this.drawDeployables(s, cull);
     this.drawVehicles(s, cull);
@@ -150,7 +160,9 @@ export class Renderer {
     this.drawEffects(s);
     this.drawCollections(s);
     this.drawGhost(s);
+    drawMarked(ctx, s.players, s.time);
     this.drawLabels(s, cull);
+    drawJob(ctx, s.job, s.selfX, s.selfY, view, s.time);
 
     ctx.restore();
 
@@ -438,7 +450,9 @@ export class Renderer {
             return teamColorFor(team, s.colorblind);
           });
       drawVehicle(ctx, {
-        def,
+        def: v.police
+          ? { ...def, color: RESIDENT.squadCar }
+          : v.security ? { ...def, color: RESIDENT.securityVan } : def,
         damage: 1 - v.hp / Math.max(1, v.maxHp),
         destroyed: v.destroyed,
         occupied: v.driver !== null,
@@ -449,6 +463,19 @@ export class Renderer {
         braking: false,
         riderColors,
       });
+      if (v.security && !v.destroyed) {
+        // A gold band down the middle: the van worth stopping.
+        ctx.fillStyle = RESIDENT.securityStripe;
+        ctx.fillRect(-def.length / 2 + 6, -2.5, def.length - 12, 5);
+      }
+      if (v.police && !v.destroyed) {
+        // Light bar across the roof, alternating red and blue.
+        const flash = Math.floor(s.time / 180) % 2 === 0;
+        ctx.fillStyle = flash ? '#ff3b4e' : '#3d8bff';
+        ctx.fillRect(-3, -def.width / 2 + 3, 6, def.width / 2 - 3);
+        ctx.fillStyle = flash ? '#3d8bff' : '#ff3b4e';
+        ctx.fillRect(-3, 0, 6, def.width / 2 - 3);
+      }
       ctx.restore();
 
       // Occupancy pips: how many are aboard, and how many seats remain.
@@ -499,7 +526,10 @@ export class Renderer {
       const age = Math.min(1, (s.time - born) / 3500);
       ctx.save();
       ctx.translate(p.x, p.y);
-      drawCorpse(ctx, teamColorFor(p.team, s.colorblind), p.aim, age);
+      drawCorpse(
+        ctx, p.npc ? residentColor(p.npc, p.look ?? 0) : teamColorFor(p.team, s.colorblind),
+        p.aim, age,
+      );
       ctx.restore();
     }
     // Forget bodies that are no longer being sent, so the map cannot grow.
@@ -516,6 +546,7 @@ export class Renderer {
       const friendly = s.selfTeam >= 0 && p.team === s.selfTeam;
       this.drawActor(
         s, p.x, p.y, p.aim, p.team, p.weapon, p.sprinting, p.protected, friendly, false, p.air,
+        p.npc ? residentColor(p.npc, p.look ?? 0) : undefined,
       );
       if (p.hp >= 0 && p.hp < 100) this.drawBar(p.x, p.y - 24, 26, p.hp / 100, '#3ad07a');
     }
@@ -536,9 +567,11 @@ export class Renderer {
     sprinting: boolean, isProtected: boolean,
     friendly: boolean, isSelf: boolean,
     air = 0,
+    /** A resident's own colour; residents get no friend/foe ring. */
+    residentColor?: string,
   ): void {
     const ctx = this.ctx;
-    const color = teamColorFor(team, s.colorblind);
+    const color = residentColor ?? teamColorFor(team, s.colorblind);
     // Jump arc: the shadow stays on the ground and shrinks while the body
     // lifts and grows, which is how height reads from directly above.
     const h = jumpHeight(air);
@@ -562,7 +595,9 @@ export class Renderer {
     // Friend/foe ring drawn under the body: a filled team ring for allies, a
     // hard hostile ring for enemies. Colour alone is never the only cue - the
     // ring style and the badge above both carry it too.
-    if (!isSelf) {
+    if (residentColor) {
+      // No ring: a passer-by is neither friend nor foe.
+    } else if (!isSelf) {
       ctx.lineWidth = 2.5;
       ctx.strokeStyle = friendly ? color : PLAYER.hostile;
       ctx.setLineDash(friendly ? [] : [5, 4]);
@@ -619,6 +654,8 @@ export class Renderer {
 
     for (const p of s.players) {
       if (!inRect(p.x, p.y, cull) || p.life !== 'alive') continue;
+      // Residents are anonymous; a label over every passer-by is clutter.
+      if (p.npc) continue;
       const friendly = s.selfTeam >= 0 && p.team === s.selfTeam;
       const color = teamColorFor(p.team, s.colorblind);
       const y = p.y - (p.vehicleId !== null ? 34 : 30);
@@ -636,6 +673,16 @@ export class Renderer {
 
       ctx.fillStyle = friendly ? color : '#ffd7dc';
       ctx.fillText(label, p.x, y);
+
+      // Wanted stars sit above the name, with the bounty on offer: anyone can
+      // see who is fair game, and what they are worth.
+      if (p.wanted > 0) {
+        ctx.font = 'bold 12px ui-monospace, monospace';
+        ctx.fillStyle = '#ffd23f';
+        const bounty = GAMEPLAY.money.bountyByStars[p.wanted] ?? 0;
+        ctx.fillText(`${'★'.repeat(p.wanted)} $${bounty}`, p.x, y - 14);
+        ctx.font = 'bold 11px ui-monospace, monospace';
+      }
     }
     ctx.restore();
   }
@@ -765,6 +812,39 @@ export class Renderer {
             ctx.fill();
           }
           ctx.restore();
+          break;
+        }
+        case 'cash': {
+          // Money: pops in with an overshoot, floats up, and (for a gain)
+          // throws a few gold sparks. `r` is the font size, scaled by amount.
+          const t = Math.min(1, age * 5);
+          const pop = 1 + 0.35 * Math.sin(t * Math.PI) * (1 - age);
+          const gain = !(fx.text ?? '').startsWith('-');
+          const ry = fx.y - (gain ? age * 46 : -age * 18);
+          ctx.save();
+          ctx.globalAlpha = Math.min(1, fade * 1.8);
+          ctx.translate(fx.x, ry);
+          ctx.scale(pop, pop);
+          ctx.font = `900 ${fx.r ?? 18}px ui-monospace, monospace`;
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          ctx.lineWidth = 4;
+          ctx.strokeStyle = 'rgba(0,0,0,0.85)';
+          ctx.strokeText(fx.text ?? '', 0, 0);
+          ctx.fillStyle = fx.color ?? '#7ef3a4';
+          ctx.fillText(fx.text ?? '', 0, 0);
+          ctx.restore();
+          if (gain) {
+            ctx.save();
+            ctx.globalAlpha = fade;
+            ctx.fillStyle = '#ffd23f';
+            for (let i = 0; i < 6; i++) {
+              const a = (i / 6) * Math.PI * 2 + fx.x * 0.01;
+              const d = 10 + age * 44;
+              ctx.fillRect(fx.x + Math.cos(a) * d - 1.5, fx.y + Math.sin(a) * d * 0.6 - age * 20 - 1.5, 3, 3);
+            }
+            ctx.restore();
+          }
           break;
         }
         case 'damageNumber': {

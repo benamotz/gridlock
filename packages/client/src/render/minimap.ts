@@ -1,7 +1,8 @@
 import type {
-  DeployableWire, GameMapDef, PickupWire, PlayerWire, VehicleWire,
+  DeployableWire, GameMapDef, JobWire, PickupWire, PlayerWire, VehicleWire,
 } from '@gridlock/shared';
-import { ZONE_STYLES, teamColorFor } from './assets.js';
+import { RESIDENT, ZONE_STYLES, teamColorFor } from './assets.js';
+import { jobColor, serviceStyle } from './cityLayer.js';
 
 export interface MinimapState {
   map: GameMapDef;
@@ -13,6 +14,8 @@ export interface MinimapState {
   vehicles: VehicleWire[];
   deployables: DeployableWire[];
   pickups: PickupWire[];
+  /** The local player's job, marked so it can be found from anywhere. */
+  job?: JobWire | null;
   colorblind: boolean;
   /** Expanded mode draws the whole map with landmark labels. */
   expanded: boolean;
@@ -33,7 +36,9 @@ export class Minimap {
     const existing = this.cache.get(map.id);
     if (existing) return existing;
 
-    const scale = 512 / Math.max(map.width, map.height);
+    // Sharp enough that the compact window (a ~1500-unit slice) stays legible
+    // on the big region map, where 512 px across would be 32 units a pixel.
+    const scale = Math.min(0.25, 2048 / Math.max(map.width, map.height));
     const c = document.createElement('canvas');
     c.width = Math.ceil(map.width * scale);
     c.height = Math.ceil(map.height * scale);
@@ -95,6 +100,13 @@ export class Minimap {
       }
     }
 
+    // Businesses as coloured dots; phone booths and shops are what players look
+    // for on the big map.
+    for (const svc of s.map.services ?? []) {
+      ctx.fillStyle = serviceStyle(svc.kind).fill;
+      ctx.fillRect(wx(svc.x) - 2.5, wy(svc.y) - 2.5, 5, 5);
+    }
+
     for (const p of s.pickups) {
       if (p.kind !== 'weapon' && p.kind !== 'health') continue;
       ctx.fillStyle = p.kind === 'health' ? '#7ef3a4' : '#ffd479';
@@ -116,12 +128,44 @@ export class Minimap {
 
     for (const p of s.players) {
       if (p.life !== 'alive') continue;
+      // Officers nearby show up, so a chase can be read and escaped.
+      if (p.npc === 'cop') {
+        ctx.fillStyle = RESIDENT.police;
+        ctx.fillRect(wx(p.x) - 2, wy(p.y) - 2, 4, 4);
+        continue;
+      }
+      // Gunmen a job has set against you, so a fight can be read from the map.
+      if (p.npc === 'thug' && p.marked) {
+        ctx.fillStyle = '#ff3b4e';
+        ctx.fillRect(wx(p.x) - 2, wy(p.y) - 2, 4, 4);
+        continue;
+      }
+      if (p.npc) continue;
+      // Wanted players nearby are flagged, the way a police scanner would.
+      if (p.wanted > 0) {
+        ctx.fillStyle = '#ff3b4e';
+        ctx.beginPath();
+        ctx.arc(wx(p.x), wy(p.y), 2.5 + p.wanted * 0.5, 0, Math.PI * 2);
+        ctx.fill();
+        continue;
+      }
       // Only teammates appear on the minimap - enemies must be spotted.
       if (p.team !== s.selfTeam || s.selfTeam < 0) continue;
       ctx.fillStyle = teamColorFor(p.team, s.colorblind);
       ctx.beginPath();
       ctx.arc(wx(p.x), wy(p.y), 3, 0, Math.PI * 2);
       ctx.fill();
+    }
+
+    if (s.job) {
+      // Clamped to the window edge when off it, so the direction is never lost.
+      const jx = Math.max(6, Math.min(w - 6, wx(s.job.x)));
+      const jy = Math.max(6, Math.min(h - 6, wy(s.job.y)));
+      ctx.strokeStyle = jobColor(s.job.kind);
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(jx, jy, 5, 0, Math.PI * 2);
+      ctx.stroke();
     }
 
     // Self: a triangle so facing is legible at this scale.

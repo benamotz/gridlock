@@ -34,6 +34,20 @@ export const PRACTICE_CONFIG: MatchConfig = {
   botsEnabled: true,
 };
 
+/**
+ * The always-on city. Durations are 0 because the world never ends; team
+ * fields only satisfy `MatchConfig` - every free-roam player is `NO_TEAM`.
+ */
+export const FREEROAM_CONFIG: MatchConfig = {
+  ...DEFAULT_MATCH_CONFIG,
+  mapId: 'kestrel-region',
+  mode: 'freeroam',
+  scoreTarget: 0,
+  matchDurationSec: 0,
+  respawnDelaySec: 4,
+  botsEnabled: false,
+};
+
 /** Hard cap on humans in one match for this milestone (see README roadmap). */
 export const MAX_PLAYERS_PER_MATCH = 20;
 export const MVP_MAX_HUMANS = 8;

@@ -176,6 +176,243 @@ export const GAMEPLAY = {
     emptyRoomTimeoutSec: 60,
   },
 
+  freeRoam: {
+    /** Players the always-on city holds at once. */
+    maxPlayers: 32,
+    /**
+     * Spawn samples across the whole city. Far more than a team zone needs,
+     * because most random points land inside buildings or water.
+     */
+    spawnCandidates: 64,
+    /** A newcomer arrives this far from a random player already in the world. */
+    spawnNearPlayer: { min: 500, max: 1400 },
+  },
+
+  /**
+   * Free-roam crime. Each crime adds heat; heat maps to 0-5 stars through
+   * `starHeat` (the heat at which each star is reached). After `coolDelaySec`
+   * without a new crime the level drops one star every `coolStepSec`.
+   */
+  wanted: {
+    maxStars: 5,
+    starHeat: [1, 4, 10, 20, 35],
+    maxHeat: 50,
+    crimeHeat: { assault: 1, murder: 4, vandalism: 2, carjack: 2, robbery: 4 },
+    /**
+     * One assault per victim per window: a shotgun blast or a burst is one
+     * attack, not a dozen crimes.
+     */
+    assaultRepeatSec: 3,
+    coolDelaySec: 10,
+    coolStepSec: 7,
+    /**
+     * Swapping to another vehicle while no officer is watching costs the police
+     * your description: one star, at most once per this many seconds.
+     */
+    carSwapCooldownSec: 20,
+    /** Seconds without a sighting before a swap counts as unseen. */
+    carSwapUnseenSec: 2,
+    /**
+     * Outside the town whose police want you, the level cools this many times
+     * faster - getting to the next town is how a getaway pays off.
+     */
+    outsideCoolRate: 2,
+  },
+
+  /**
+   * Free-roam residents. Populations are kept per human player inside a ring
+   * around them and recycled once nobody is near, so the cost follows the
+   * players rather than the size of the city.
+   */
+  city: {
+    pedsPerPlayer: 10,
+    trafficPerPlayer: 5,
+    maxPeds: 90,
+    maxTraffic: 36,
+    /** Residents appear between these distances from a player: off screen, but close. */
+    spawnMinDist: 760,
+    spawnMaxDist: 1450,
+    /** No resident appears this close to any player. */
+    spawnClearDist: 650,
+    despawnDist: 1900,
+    /** How often (ms) the population is topped up and recycled. */
+    populateMs: 400,
+    pedHealth: 60,
+    /** Fraction of walking speed a calm pedestrian strolls at. */
+    pedStroll: 0.42,
+    /** Seconds a frightened pedestrian keeps running. */
+    panicSec: 7,
+    /** Shots and blasts within this distance frighten pedestrians. */
+    panicRadius: 420,
+    /** Centre-line offsets: pedestrians walk the kerb, traffic keeps right. */
+    kerbOffset: 56,
+    laneOffset: 28,
+    trafficThrottle: 0.55,
+    /** Traffic eases off this close to an intersection, to make the turn. */
+    turnSlowDist: 140,
+    /** Seconds traffic waits for an obstruction before nudging through. */
+    trafficPatienceSec: 3,
+  },
+
+  police: {
+    /**
+     * Officers sent after a player, by wanted stars (index = stars). They come
+     * two to a squad car whenever at least two are needed, so even one star
+     * brings a car.
+     */
+    unitsByStars: [0, 2, 3, 4, 6, 8],
+    maxCops: 44,
+    /** From this many stars, officers shoot instead of only trying to arrest. */
+    shootFromStars: 3,
+    /** From this many stars, an officer riding as passenger shoots from the car. */
+    passengerShootFromStars: 4,
+    /**
+     * How far officers can see a suspect, by stars. Short at low levels so a
+     * small crime can be walked away from; new units always arrive beyond it.
+     */
+    sightByStars: [0, 420, 480, 560, 640, 720],
+    /**
+     * Seconds before units are sent after an unwitnessed crime. A crime an
+     * officer sees brings the police at once.
+     */
+    responseDelaySec: 4,
+    /** Officers share a sighting by radio for this long. */
+    radioSec: 1.5,
+    /** Units that lose the suspect search this far around the last sighting. */
+    searchRadius: 520,
+    /** Ambient squad cars on patrol, per player in the area and in total. */
+    patrolsPerPlayer: 1,
+    maxPatrols: 8,
+    /** Road blocks (two parked squad cars and two officers) from this many stars. */
+    roadblockFromStars: 4,
+    roadblocksPerSuspect: 2,
+    roadblockEverySec: 10,
+    roadblockMinDist: 900,
+    roadblockMaxDist: 1700,
+    shootRange: 460,
+    /** Aim error in radians, so officers miss sometimes. */
+    aimError: 0.11,
+    /** A slow-moving suspect this close to an officer is arrested. */
+    bustRange: 38,
+    /** Suspects moving slower than this (units/s) can be arrested. */
+    bustMaxSpeed: 140,
+    dispatchMs: 1000,
+    spawnMinDist: 650,
+    spawnMaxDist: 1300,
+    /** Officers stay this far from a suspect they are shooting at. */
+    standoff: 230,
+    officerHealth: 100,
+    /** Seconds an officer with nobody to chase lingers before leaving. */
+    standDownSec: 15,
+    /** Share of the usual units still sent after a suspect who left town. */
+    outsideUnits: 0.5,
+  },
+
+  /** Free-roam money. Nothing is saved: everyone starts each visit fresh. */
+  money: {
+    start: 250,
+    /** Cash a pedestrian or officer carries (min, max). */
+    pedWallet: [8, 70],
+    copWallet: [20, 90],
+    /** Share of a player's cash dropped where they die, for anyone to take. */
+    deathDrop: 0.25,
+    /** Share of a player's cash lost when arrested. */
+    bail: 0.2,
+    /** Paid to whoever kills a wanted player, by the victim's stars. */
+    bountyByStars: [0, 150, 300, 600, 1200, 2500],
+    pickupRadius: 36,
+    dropLifetimeSec: 45,
+    /** Chop shop prices; a damaged car fetches less. */
+    chopValue: { motorcycle: 150, car: 220, sports: 650, van: 260, truck: 420, armored: 900 },
+    policeCarValue: 450,
+    chopCooldownSec: 20,
+    /** Vehicle services only trigger for a car pulling in, not one flying past. */
+    serviceMaxSpeed: 170,
+    resprayPerStar: 120,
+    /** Store hold-ups: seconds at gunpoint, takings, and a lock-out per store. */
+    holdupSec: 4,
+    holdupTake: [250, 600],
+    storeCooldownSec: 150,
+  },
+
+  /**
+   * Armed crews: hostile residents a job sets against one player. They use the
+   * police's shooting rules, but only ever target that player.
+   */
+  crew: {
+    health: 100,
+    armor: 30,
+    /** A crew spots its target this close (with a clear line of sight). */
+    aggroRange: 480,
+    shootRange: 440,
+    standoff: 220,
+    aimError: 0.2,
+    /**
+     * Crew shots hurt players this much less than the weapon's full damage, and
+     * a member who has just spotted the target waits `reactionMs` before
+     * firing. Measured: a whole hideout firing at a player in the open did
+     * ~194 damage a second before these (dead in half a second); ~50 after.
+     */
+    damageScale: 0.4,
+    reactionMs: 700,
+    /** A hideout crew stops chasing this far from home and goes back. */
+    leash: 760,
+    /** Automatic weapons fire in bursts: on for this long, then off. */
+    burstMs: 650,
+    restMs: 450,
+    weapons: ['smg', 'shotgun', 'pistol', 'smg'],
+    wallet: [40, 120],
+  },
+
+  /** Phone-booth jobs. */
+  jobs: {
+    /** Courier pay: a base plus this much per unit of straight-line distance. */
+    courierBase: 150,
+    courierPerUnit: 0.05,
+    /** Time allowed: distance at this speed, plus slack. */
+    courierSpeed: 240,
+    courierSlackSec: 25,
+    courierRadius: 80,
+    hitReward: [400, 700],
+    hitTimeSec: 150,
+    hitMinDist: 900,
+    hitMaxDist: 1700,
+    /**
+     * Steal to order: what each kind of vehicle pays, delivered to the named
+     * chop shop. Pay scales with the vehicle's condition.
+     */
+    boostReward: { sports: 900, truck: 700, van: 500, motorcycle: 450, policeCar: 1300 },
+    boostTimeSec: 300,
+    /** Armored truck: total cash in the van, split into bags when it is wrecked. */
+    truckCash: 1600,
+    truckBags: 8,
+    truckTimeSec: 200,
+    /** Decoy run: start at this many stars, get rid of them in time. */
+    decoyStars: 3,
+    decoyTimeSec: 100,
+    decoyReward: 650,
+    /** Bounty hunter: paid on top of the normal bounty; a fugitive if nobody is wanted. */
+    bountyBonus: 350,
+    fugitiveReward: 550,
+    bountyTimeSec: 180,
+    /** Armed guards riding behind the cash van. */
+    escortCrew: 3,
+    /** Crew hideout: gunmen holed up in town, and what clearing them pays. */
+    hideoutCrew: 5,
+    hideoutReward: 900,
+    hideoutTimeSec: 240,
+    /** Each contact's finale pays this much more than a normal job. */
+    finaleMultiplier: 2,
+    /** Jobs done for one contact before they offer their finale. */
+    trustForFinale: 3,
+    /** A cellphone rings with an offer this long after the last one ended (min, max s). */
+    cellOfferEverySec: [30, 60],
+    /** The first call comes soon after buying the phone. */
+    cellFirstOfferSec: 12,
+    /** An unanswered call rings off after this long. */
+    cellRingSec: 15,
+  },
+
   net: {
     /** Entities outside this radius are omitted from a player's snapshot. */
     interestRadius: 1700,

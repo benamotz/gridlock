@@ -2,6 +2,8 @@ import type {
   BotDifficulty,
   DeployableKind,
   ConnectionState,
+  CrimeKind,
+  NpcKind,
   GameModeId,
   InputCommand,
   LoadoutRule,
@@ -38,6 +40,8 @@ export interface CreateRoomMsg {
 
 export interface JoinRoomMsg { t: 'join_room'; code: string }
 export interface QuickPlayMsg { t: 'quick_play' }
+/** Drop into the always-on city. */
+export interface FreeRoamMsg { t: 'free_roam' }
 /** Single-player practice: a private room pre-filled with bots. */
 export interface PracticeMsg { t: 'practice'; config: Partial<MatchConfig> }
 export interface LeaveRoomMsg { t: 'leave_room' }
@@ -49,6 +53,8 @@ export interface RematchMsg { t: 'rematch' }
 export interface InputMsg { t: 'input'; cmds: InputCommand[] }
 export interface ChatMsg { t: 'chat'; text: string }
 export interface PingMsg { t: 'ping'; id: number }
+/** Answer the cellphone: take or turn down the job on offer. */
+export interface PhoneMsg { t: 'phone'; answer: 'accept' | 'decline' }
 /** Asks for a fresh scoreboard; sent while the player holds Tab. */
 export interface RequestScoreboardMsg { t: 'scoreboard' }
 /** Changes the display name without dropping the session. */
@@ -70,10 +76,10 @@ export interface DeployMsg {
 }
 
 export type ClientMessage =
-  | HelloMsg | CreateRoomMsg | JoinRoomMsg | QuickPlayMsg | PracticeMsg
+  | HelloMsg | CreateRoomMsg | JoinRoomMsg | QuickPlayMsg | FreeRoamMsg | PracticeMsg
   | LeaveRoomMsg | SetTeamMsg | SetReadyMsg | UpdateConfigMsg | StartMatchMsg
   | RematchMsg | InputMsg | ChatMsg | PingMsg | ReportMsg
-  | RequestScoreboardMsg | SetNameMsg | DeployMsg;
+  | RequestScoreboardMsg | SetNameMsg | DeployMsg | PhoneMsg;
 
 // ---------------------------------------------------------------------------
 // Server -> Client
@@ -175,7 +181,61 @@ export interface SelfState {
   armorPlates: number;
   /** Milliseconds until another consumable may be used. */
   pouchCooldownMs: number;
+  /** Free-roam wanted level, 0-5 stars; always 0 in team modes. */
+  wanted: number;
+  /** True while the wanted level is cooling off (no recent crime). */
+  wantedCooling: boolean;
+  /** True while wanted and outside the town whose police want you. */
+  outOfJurisdiction: boolean;
+  /** Free-roam cash; 0 in team modes. */
+  cash: number;
+  /** Store hold-up progress 0-1, 0 when not robbing anything. */
+  holdup: number;
+  /** The job taken from a phone booth or the cellphone, if any. */
+  job: JobWire | null;
+  /** Owns a cellphone (bought at a gun counter). */
+  hasPhone: boolean;
+  /** A call ringing right now, waiting for an answer. */
+  phoneOffer: PhoneOfferWire | null;
 }
+
+export type JobKind = 'courier' | 'hit' | 'boost' | 'armored' | 'decoy' | 'bounty' | 'hideout';
+
+export interface JobWire {
+  kind: JobKind;
+  text: string;
+  /** Who the job is for, and their one line about it (the story layer). */
+  contact?: string;
+  brief?: string;
+  /** Where to go: the drop-off, or the target's current position. */
+  x: number;
+  y: number;
+  reward: number;
+  /** Server time the job fails if not done. */
+  endsAt: number;
+}
+
+export interface PhoneOfferWire {
+  kind: JobKind;
+  text: string;
+  contact?: string;
+  brief?: string;
+  reward: number;
+  /** Server time the call rings off. */
+  expiresAt: number;
+}
+
+/** Dropped cash lying in the street. */
+export interface MoneyWire {
+  id: number;
+  x: number;
+  y: number;
+  amount: number;
+}
+
+export type CashReason =
+  | 'pickup' | 'wallet' | 'bounty' | 'chop' | 'respray' | 'bail' | 'robbery'
+  | 'purchase' | 'job' | 'death';
 
 export interface PlayerWire {
   id: PlayerId;
@@ -195,6 +255,14 @@ export interface PlayerWire {
   carryingFlag: number;
   /** Seconds of airtime remaining, 0 on the ground; drives the jump arc. */
   air: number;
+  /** Wanted stars, public so everyone can see who is a fair target. */
+  wanted: number;
+  /** Set for city residents; absent for real players. */
+  npc?: NpcKind;
+  /** Resident clothing variant, so a crowd is not a row of clones. */
+  look?: number;
+  /** This resident is the viewer's hit-job target. */
+  marked?: boolean;
 }
 
 export interface VehicleWire {
@@ -212,6 +280,10 @@ export interface VehicleWire {
   passengers: PlayerId[];
   seats: number;
   destroyed: boolean;
+  /** Police livery: a squad car, not something to borrow quietly. */
+  police?: boolean;
+  /** Security van livery: the cash truck in an armored-truck job. */
+  security?: boolean;
 }
 
 export interface DeployableWire {
@@ -269,6 +341,14 @@ export type GameEvent =
     }
   | { e: 'useItem'; by: PlayerId; x: number; y: number; kind: 'health' | 'armor'; amount: number }
   | { e: 'jump'; by: PlayerId; x: number; y: number }
+  /** Private to the offender: drives the HUD's crime callout. */
+  | { e: 'crime'; by: PlayerId; kind: CrimeKind; stars: number }
+  /** Private to the suspect: arrested by the police, and what bail cost. */
+  | { e: 'busted'; by: PlayerId; bail: number }
+  /** Private: money gained (positive) or spent/lost (negative), and why. */
+  | { e: 'cash'; by: PlayerId; amount: number; reason: CashReason }
+  /** Private: a one-line message, e.g. why a purchase was refused. */
+  | { e: 'notice'; by: PlayerId; text: string; from?: string }
   | { e: 'reload'; x: number; y: number }
   | { e: 'vehicleHit'; x: number; y: number; force: number }
   | { e: 'deploy'; x: number; y: number; kind: DeployableKind; team: number }
@@ -282,6 +362,8 @@ export interface ScoreEntry {
   isBot: boolean;
   connection: ConnectionState;
   stats: PlayerStats;
+  /** Free-roam cash, for the "richest in the city" ranking. */
+  cash?: number;
 }
 
 export interface SnapshotMsg {
@@ -294,6 +376,8 @@ export interface SnapshotMsg {
   deployables: DeployableWire[];
   projectiles: ProjectileWire[];
   pickups: PickupWire[];
+  /** Free-roam cash drops near the viewer. */
+  money?: MoneyWire[];
   events: GameEvent[];
   teamScores: number[];
   timeLeftMs: number;
@@ -358,6 +442,8 @@ const str = (v: unknown, max: number): string =>
 const bool = (v: unknown, fallback: boolean): boolean =>
   typeof v === 'boolean' ? v : fallback;
 
+// `freeroam` is deliberately absent: there is one server-owned city, so a
+// client-created room can never become a second one.
 const MODES: GameModeId[] = ['tdm', 'ctf', 'br'];
 const LOADOUTS: LoadoutRule[] = ['fixed', 'random-tier', 'team-pool', 'none', 'chaos'];
 const DIFFICULTIES: BotDifficulty[] = ['easy', 'normal', 'hard'];
@@ -416,6 +502,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { t: 'join_room', code: str(raw.code, 8).toUpperCase() };
     case 'quick_play':
       return { t: 'quick_play' };
+    case 'free_roam':
+      return { t: 'free_roam' };
+    case 'phone':
+      return raw.answer === 'accept' || raw.answer === 'decline'
+        ? { t: 'phone', answer: raw.answer }
+        : null;
     case 'practice':
       return { t: 'practice', config: sanitizeConfig(raw.config) };
     case 'leave_room':

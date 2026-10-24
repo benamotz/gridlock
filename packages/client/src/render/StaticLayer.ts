@@ -120,7 +120,18 @@ export class StaticLayer {
     }
 
     // 2. Pavement slab grid over the whole chunk, then speckle grit.
-    this.paveGrid(ctx, ox, oy);
+    // On a map with open country, only the towns are paved.
+    const paved = this.map.towns?.map((t) => t.rect);
+    if (paved) {
+      ctx.save();
+      ctx.beginPath();
+      for (const r of paved) ctx.rect(r.x, r.y, r.w, r.h);
+      ctx.clip();
+      this.paveGrid(ctx, ox, oy);
+      ctx.restore();
+    } else {
+      this.paveGrid(ctx, ox, oy);
+    }
 
     // 3. Water gets its own treatment before roads, so bridges sit on top.
     for (const z of this.groundZones) {

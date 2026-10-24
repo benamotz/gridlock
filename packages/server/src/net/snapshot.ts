@@ -5,6 +5,7 @@ import {
   type DeployableWire,
   type GameEvent,
   type MatchPhase,
+  type MoneyWire,
   type PickupWire,
   type PlayerWire,
   type ProjectileWire,
@@ -19,6 +20,7 @@ import {
 import type { PlayerEntity } from '../sim/entities.js';
 import type { World } from '../sim/World.js';
 import { deployZone, teamDeployCount } from '../sim/deployables.js';
+import { isCooling, outOfJurisdiction, wantedStars } from '../sim/wanted.js';
 
 const round = (v: number): number => Math.round(v * 100) / 100;
 
@@ -65,6 +67,9 @@ export function buildSnapshot(
       protected: world.isProtected(p),
       carryingFlag: -1,
       air: round(p.air),
+      wanted: wantedStars(p.heat),
+      ...(p.npc ? { npc: p.npc, look: p.look } : {}),
+      ...(p.markedFor === viewer.id ? { marked: true } : {}),
     });
   }
 
@@ -81,6 +86,8 @@ export function buildSnapshot(
       passengers: [...v.passengers],
       seats: v.passengers.length + (v.driverId ? 1 : 0),
       destroyed: v.destroyed,
+      ...(v.police ? { police: true } : {}),
+      ...(v.security ? { security: true } : {}),
     });
   }
 
@@ -117,6 +124,12 @@ export function buildSnapshot(
     });
   }
 
+  // Free-roam cash in the street, within the usual interest radius.
+  const money: MoneyWire[] = [];
+  for (const d of world.moneyDrops.values()) {
+    if (near(d.x, d.y)) money.push({ id: d.id, x: round(d.x), y: round(d.y), amount: d.amount });
+  }
+
   const pickups: PickupWire[] = [];
   for (const pk of world.pickups.values()) {
     if (!pk.active || !near(pk.x, pk.y)) continue;
@@ -141,6 +154,12 @@ export function buildSnapshot(
         return e.to === viewer.id;
       case 'hitmark':
         // The hit marker belongs to the shooter alone.
+        return e.by === viewer.id;
+      case 'busted':
+      case 'cash':
+      case 'notice':
+      case 'crime':
+        // Everyone sees the stars; only the offender gets the callout.
         return e.by === viewer.id;
       case 'deploy':
         // Placing a mine would give its position away to anyone watching.
@@ -187,6 +206,16 @@ export function buildSnapshot(
     medkits: viewer.medkits,
     armorPlates: viewer.armorPlates,
     pouchCooldownMs: Math.max(0, Math.round(viewer.pouchReadyAt - world.now)),
+    wanted: wantedStars(viewer.heat),
+    wantedCooling: isCooling(world, viewer),
+    outOfJurisdiction: outOfJurisdiction(world, viewer),
+    cash: viewer.cash,
+    holdup: viewer.holdupStore
+      ? Math.min(1, viewer.holdupMs / (GAMEPLAY.money.holdupSec * 1000))
+      : 0,
+    job: viewer.job,
+    hasPhone: viewer.hasPhone,
+    phoneOffer: viewer.phoneOffer,
   };
 
   return {
@@ -199,6 +228,7 @@ export function buildSnapshot(
     deployables,
     projectiles,
     pickups,
+    ...(world.lawEnabled ? { money } : {}),
     events: visibleEvents,
     teamScores,
     timeLeftMs,
@@ -220,6 +250,7 @@ function seatFor(world: World, p: PlayerEntity): number {
  * whether this player is currently in a position to place anything.
  */
 function deployStatus(world: World, p: PlayerEntity): DeployStatusWire[] {
+  if (p.team < 0) return [];
   const kinds: DeployableKind[] = ['barricade', 'turret', 'mine'];
   const inZone =
     p.team >= 0 && pointInRect(p.x, p.y, deployZone(world, p.team));

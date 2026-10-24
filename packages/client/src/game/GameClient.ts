@@ -20,6 +20,7 @@ import {
   type VehicleWire,
   angleDelta,
   getMap,
+  townAt,
   lerp,
   lerpAngle,
   stepPlayerMovement,
@@ -120,6 +121,14 @@ export class GameClient {
   /** Predicted pickup grabs and their animations. */
   private collection = new CollectionPredictor();
   private lastCollect: HudState['lastCollect'] = null;
+  private lastCrime: HudState['lastCrime'] = null;
+  private bustedAt = 0;
+  /** The call we last rang for, so each new offer rings once. */
+  private rangFor = 0;
+  private lastBail = 0;
+  private lastCash: HudState['lastCash'] = null;
+  private notice: HudState['notice'] = null;
+  private contactLine: HudState['contactLine'] = null;
   /**
    * Jump button state of the last command the server acknowledged. Replayed
    * prediction starts from it, so an unacknowledged jump still triggers on
@@ -161,6 +170,12 @@ export class GameClient {
       onMenu: () => this.callbacks.onMenu(),
       onChat: () => this.callbacks.onChat(),
       onDeploy: (kind) => this.onDeployKey(kind),
+      onPhone: (accept) => {
+        // Only a ringing phone can be answered; stray presses send nothing.
+        if (this.latest?.self.phoneOffer) {
+          this.socket.send({ t: 'phone', answer: accept ? 'accept' : 'decline' });
+        }
+      },
       onWheel: (direction) => this.placement.rotate(direction),
       onPrimaryClick: () => this.confirmPlacement(),
       onSecondaryClick: () => this.cancelPlacement(),
@@ -218,6 +233,13 @@ export class GameClient {
 
   onSnapshot(snap: SnapshotMsg): void {
     this.latest = snap;
+    const call = snap.self.phoneOffer;
+    if (call && call.expiresAt !== this.rangFor) {
+      this.rangFor = call.expiresAt;
+      // Two trills, like a phone.
+      this.audio.play('ring', 0, 1);
+      window.setTimeout(() => this.audio.play('ring', 0, 1), 260);
+    }
     this.buffer.push({
       time: snap.serverTime,
       players: snap.players,
@@ -388,6 +410,35 @@ export class GameClient {
         }
         break;
       }
+      case 'crime':
+        // The server only sends us our own crimes.
+        this.lastCrime = { kind: e.kind, stars: e.stars, at: now };
+        this.audio.play('wanted', 0, 1);
+        break;
+      case 'cash': {
+        this.lastCash = { amount: e.amount, reason: e.reason, at: now };
+        const big = Math.abs(e.amount) >= 300;
+        this.effects.push({
+          kind: 'cash',
+          x: this.predicted.x, y: this.predicted.y - 34,
+          text: `${e.amount >= 0 ? '+' : '-'}$${Math.abs(e.amount).toLocaleString('en-US')}`,
+          color: e.amount >= 0 ? (big ? '#ffd23f' : '#7ef3a4') : '#ff7a85',
+          // Bigger money, bigger number.
+          r: Math.min(30, 16 + Math.log10(Math.max(10, Math.abs(e.amount))) * 3),
+          born: now, life: big ? 1500 : 1100,
+        });
+        if (e.amount > 0) this.audio.play(big ? 'cashBig' : 'cash', 0, 1);
+        break;
+      }
+      case 'notice':
+        if (e.from) this.contactLine = { from: e.from, text: e.text, at: now };
+        else this.notice = { text: e.text, at: now };
+        break;
+      case 'busted':
+        this.bustedAt = now;
+        this.lastBail = e.bail;
+        this.audio.play('wanted', 0, 1);
+        break;
       case 'useItem': {
         const color = e.kind === 'health' ? '#7ef3a4' : '#c4a4ff';
         this.effects.push({ kind: 'pickup', x: e.x, y: e.y, color, born: now, life: 520 });
@@ -547,6 +598,8 @@ export class GameClient {
       projectiles: interpolated.projectiles,
       // Anything we have already grabbed is gone from our view immediately.
       pickups: snap.pickups.filter((p) => !this.collection.isHidden(p.id)),
+      money: snap.money ?? [],
+      job: snap.self.job,
       effects: this.effects,
       colorblind: this.settings.colorblind,
       screenShake: this.settings.screenShake,
@@ -566,6 +619,7 @@ export class GameClient {
       vehicles: interpolated.vehicles,
       deployables: snap.deployables,
       pickups: snap.pickups,
+      job: snap.self.job,
       colorblind: this.settings.colorblind,
       expanded: this.mapExpanded,
     });
@@ -608,6 +662,8 @@ export class GameClient {
     const snap = this.latest;
     if (!snap || snap.phase !== 'active') return;
     if (snap.self.life !== 'alive' || snap.self.vehicleId !== null) return;
+    // Defences need a team base; free-roam players have none.
+    if (snap.self.team < 0) return;
     if (this.placement.kind === kind) {
       this.confirmPlacement();
       return;
@@ -1039,6 +1095,25 @@ export class GameClient {
         : null,
       nearbyVehicle: this.nearbyVehicle(snap),
       lastCollect: this.lastCollect,
+      wanted: snap.self.wanted,
+      wantedCooling: snap.self.wantedCooling,
+      lastCrime: this.lastCrime,
+      bustedAt: this.bustedAt,
+      location: this.locationName(snap.self.x, snap.self.y),
+      outOfJurisdiction: snap.self.outOfJurisdiction,
+      cash: snap.self.cash,
+      lastCash: this.lastCash,
+      notice: this.notice,
+      contactLine: this.contactLine,
+      holdup: snap.self.holdup,
+      job: snap.self.job,
+      jobLeftMs: snap.self.job ? Math.max(0, snap.self.job.endsAt - snap.serverTime) : 0,
+      lastBail: this.lastBail,
+      hasPhone: snap.self.hasPhone,
+      phoneOffer: snap.self.phoneOffer,
+      phoneLeftMs: snap.self.phoneOffer
+        ? Math.max(0, snap.self.phoneOffer.expiresAt - snap.serverTime)
+        : 0,
       killFeed: snap.events
         .filter((e): e is Extract<GameEvent, { e: 'kill' }> => e.e === 'kill')
         .map((e) => ({
@@ -1047,9 +1122,17 @@ export class GameClient {
         })),
       objective: this.config.mode === 'tdm'
         ? `First to ${this.config.scoreTarget} eliminations`
-        : 'Objective',
+        : this.config.mode === 'freeroam'
+          ? 'The city never sleeps'
+          : 'Objective',
       rtt: this.socket.rtt,
     });
+  }
+
+  private locationName(x: number, y: number): string | null {
+    if (!this.map.towns) return null;
+    const town = townAt(this.map, x, y);
+    return town >= 0 ? this.map.towns[town].name : 'Open road';
   }
 
   /**

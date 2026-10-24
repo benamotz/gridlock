@@ -139,6 +139,7 @@ export function App(): React.ReactElement {
         {screen === 'menu' && (
           <MainMenu
             onQuickPlay={() => socket.send({ t: 'quick_play' })}
+            onFreeRoam={() => socket.send({ t: 'free_roam' })}
             onCreate={(cfg, isPrivate) =>
               socket.send({ t: 'create_room', config: cfg, isPrivate })}
             onJoin={(code) => socket.send({ t: 'join_room', code })}

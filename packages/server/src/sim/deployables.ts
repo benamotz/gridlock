@@ -109,6 +109,8 @@ export function tryDeploy(
   const def = deployableDef(kind);
 
   if (player.life !== 'alive') return { ok: false, reason: 'dead' };
+  // Defences belong to a team's base; a free-roam player has neither.
+  if (player.team < 0) return { ok: false, reason: 'out-of-base' };
   if (player.vehicleId !== null) return { ok: false, reason: 'in-vehicle' };
 
   const cooldownUntil = player.deployCooldowns[kind] ?? 0;

@@ -287,7 +287,10 @@ export type ZoneKind =
   | 'industrial'
   | 'park'
   | 'water'
-  | 'base';
+  | 'base'
+  /** Open country between towns. */
+  | 'grass'
+  | 'sand';
 
 export interface ZoneDef {
   kind: ZoneKind;
@@ -318,7 +321,68 @@ export interface VehicleSpawnDef {
   respawnSec: number;
 }
 
-export type GameModeId = 'tdm' | 'ctf' | 'br';
+/**
+ * `freeroam` is the always-on city: one persistent world that never ends, where
+ * everyone is on their own side. Only the server opens it; clients cannot pick it
+ * as a match mode.
+ */
+/** Offences that raise a free-roam wanted level. */
+export type CrimeKind = 'assault' | 'murder' | 'vandalism' | 'carjack' | 'robbery';
+
+/** Places in a free-roam town a player can use. */
+export type ServiceKind = 'chopshop' | 'respray' | 'store' | 'shop' | 'phone';
+
+/** What a shop counter sells. */
+export type ShopItemId = 'smg' | 'shotgun' | 'rifle' | 'armor' | 'medkit' | 'phone';
+
+export interface ServiceDef {
+  id: string;
+  kind: ServiceKind;
+  x: number;
+  y: number;
+  /** Trigger radius. */
+  r: number;
+  /** Index into the map's `towns`. */
+  town: number;
+  item?: ShopItemId;
+}
+
+export const SHOP_ITEMS: Record<ShopItemId, { name: string; price: number; weapon?: WeaponId }> = {
+  smg: { name: 'SMG', price: 400, weapon: 'smg' },
+  shotgun: { name: 'Shotgun', price: 500, weapon: 'shotgun' },
+  rifle: { name: 'Rifle', price: 900, weapon: 'rifle' },
+  armor: { name: 'Armor plate', price: 150 },
+  medkit: { name: 'Medkit', price: 80 },
+  /** Job offers ring in wherever you are; the booths still work without one. */
+  phone: { name: 'Cellphone', price: 300 },
+};
+
+export const SERVICE_NAMES: Record<ServiceKind, string> = {
+  chopshop: 'Chop shop',
+  respray: 'Respray',
+  store: 'Store',
+  shop: 'Gun counter',
+  phone: 'Phone',
+};
+
+/**
+ * Computer-controlled city residents: pedestrians (and drivers), police, and
+ * armed crew members who fight whoever a job sets against them.
+ */
+export type NpcKind = 'ped' | 'cop' | 'thug';
+
+/**
+ * Axis-aligned street grid the city's residents navigate: nodes are
+ * intersection centres, edges are road segments between neighbouring ones.
+ * Lanes and kerbs are offsets from these centre lines, worked out by the server.
+ */
+export interface RoadGraph {
+  /** `rural` marks highway points between towns: traffic and police only. */
+  nodes: { x: number; y: number; rural?: boolean }[];
+  edges: [number, number][];
+}
+
+export type GameModeId = 'tdm' | 'ctf' | 'br' | 'freeroam';
 
 export interface GameMapDef {
   id: string;
@@ -336,6 +400,17 @@ export interface GameMapDef {
   /** Battle-royale final safe-zone centre and starting radius. */
   safeZone: { x: number; y: number; startRadius: number };
   modes: GameModeId[];
+  /** Street grid for free-roam traffic, pedestrians and police. */
+  roads?: RoadGraph;
+  /**
+   * Named towns. Each has its own police jurisdiction in free roam, and only
+   * their ground is paved (the country between them is open land).
+   */
+  towns?: { name: string; rect: Rect }[];
+  /** Where the first player into an empty free-roam world arrives. */
+  hub?: Rect;
+  /** Free-roam businesses and phone booths. */
+  services?: ServiceDef[];
   recommendedPlayers: number;
   maxTeams: number;
 }

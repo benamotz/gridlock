@@ -2,6 +2,7 @@ import {
   type CollisionGrid,
   type GameMapDef,
   GAMEPLAY,
+  NO_TEAM,
   dist2,
 } from '@gridlock/shared';
 
@@ -10,6 +11,8 @@ export interface SpawnCandidateSource {
   y: number;
   team: number;
   alive: boolean;
+  /** City residents (officers); absent for players. */
+  npc?: boolean;
 }
 
 export interface SpawnPoint {
@@ -31,6 +34,7 @@ export function selectSpawn(
   others: SpawnCandidateSource[],
   rng: () => number,
 ): SpawnPoint {
+  if (team === NO_TEAM) return selectCitySpawn(mapDef, grid, others, rng);
   const zoneDef =
     mapDef.teamSpawns.find((s) => s.team === team) ?? mapDef.teamSpawns[0];
   const zone = zoneDef.zone;
@@ -81,4 +85,65 @@ export function selectSpawn(
     }
   }
   return { x: cx, y: cy };
+}
+
+/**
+ * Free roam has no bases. A big world is only social if people meet, so a
+ * player arrives within reach of someone already playing - near a random other
+ * player, or in the hub town when the world is empty. Water and buildings are
+ * solid, so `circleBlocked` alone rejects them. Within that area everyone
+ * counts as a threat and the safest sample wins, so a fresh spawn is never
+ * dropped next to someone who just killed them.
+ */
+function selectCitySpawn(
+  mapDef: GameMapDef,
+  grid: CollisionGrid,
+  others: SpawnCandidateSource[],
+  rng: () => number,
+): SpawnPoint {
+  const r = GAMEPLAY.player.radius;
+  const avoid = GAMEPLAY.spawn.enemyAvoidRadius;
+  const margin = r + 40;
+  const near = GAMEPLAY.freeRoam.spawnNearPlayer;
+  const players = others.filter((o) => o.alive && !o.npc);
+  const anchor = players.length > 0 ? players[Math.floor(rng() * players.length)] : null;
+  const area = mapDef.hub ?? { x: 0, y: 0, w: mapDef.width, h: mapDef.height };
+  let best: SpawnPoint | null = null;
+  let bestScore = -Infinity;
+
+  for (let i = 0; i < GAMEPLAY.freeRoam.spawnCandidates; i++) {
+    let x: number;
+    let y: number;
+    if (anchor) {
+      const a = rng() * Math.PI * 2;
+      const d = near.min + rng() * (near.max - near.min);
+      x = anchor.x + Math.cos(a) * d;
+      y = anchor.y + Math.sin(a) * d;
+    } else {
+      x = area.x + rng() * area.w;
+      y = area.y + rng() * area.h;
+    }
+    x = Math.max(margin, Math.min(mapDef.width - margin, x));
+    y = Math.max(margin, Math.min(mapDef.height - margin, y));
+    if (grid.circleBlocked(x, y, r + 2)) continue;
+
+    let score = 0;
+    for (const o of others) {
+      if (!o.alive) continue;
+      const d2 = dist2(x, y, o.x, o.y);
+      if (d2 < avoid * avoid) {
+        score -= 400 * (1 - Math.sqrt(d2) / avoid);
+        if (grid.lineOfSight(x, y, o.x, o.y)) score -= 500;
+      }
+    }
+    if (score > bestScore) {
+      bestScore = score;
+      best = { x, y };
+    }
+  }
+  if (best) return best;
+
+  // Vanishingly unlikely on a city map; fall back to the first team zone's
+  // search, which already handles a fully blocked sample set.
+  return selectSpawn(mapDef, grid, 0, [], rng);
 }

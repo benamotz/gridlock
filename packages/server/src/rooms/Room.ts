@@ -5,6 +5,7 @@ import {
   type LobbyMember,
   MVP_MAX_HUMANS,
   type MatchConfig,
+  NO_TEAM,
   type MatchPhase,
   type ScoreEntry,
   type ServerMessage,
@@ -43,6 +44,11 @@ export interface RoomOptions {
   config: Partial<MatchConfig>;
   store: Store;
   onEmpty: (room: Room) => void;
+  /**
+   * An always-on world: live from construction, never concludes, never closes
+   * when empty, and players come and go freely as `NO_TEAM`.
+   */
+  persistent?: boolean;
 }
 
 /**
@@ -55,6 +61,7 @@ export interface RoomOptions {
 export class Room {
   readonly code: string;
   readonly isPrivate: boolean;
+  readonly persistent: boolean;
   readonly members = new Map<string, RoomMember>();
   hostId: string;
   config: MatchConfig;
@@ -83,8 +90,15 @@ export class Room {
     this.code = opts.code;
     this.hostId = opts.hostId;
     this.isPrivate = opts.isPrivate;
+    this.persistent = opts.persistent ?? false;
     this.config = { ...DEFAULT_MATCH_CONFIG, ...opts.config };
     this.clampConfig();
+    if (this.persistent) {
+      // No lobby or countdown: the world exists before anyone arrives.
+      this.startMatch();
+      this.phase = 'active';
+      this.matchStartedAt = Date.now();
+    }
     this.startLoop();
   }
 
@@ -97,6 +111,7 @@ export class Room {
   }
 
   get isFull(): boolean {
+    if (this.persistent) return this.humanCount >= GAMEPLAY.freeRoam.maxPlayers;
     const cap = Math.min(this.config.teamCount * this.config.teamSize, MVP_MAX_HUMANS);
     return this.humanCount >= cap;
   }
@@ -140,7 +155,9 @@ export class Room {
       disconnectedAt: 0,
       bot: null,
     };
-    member.team = pickTeamForJoin([...this.members.values()], this.config.teamCount);
+    member.team = this.persistent
+      ? NO_TEAM
+      : pickTeamForJoin([...this.members.values()], this.config.teamCount);
     this.members.set(playerId, member);
 
     // Joining mid-match: take a bot's place if one is holding a slot.
@@ -230,6 +247,12 @@ export class Room {
       this.config.mapId = DEFAULT_MATCH_CONFIG.mapId;
       map = getMap(this.config.mapId);
     }
+    // A map that cannot host this mode at all (the free-roam region for a team
+    // match) falls back to the default map rather than an unplayable room.
+    if (!map.modes.includes(this.config.mode) && !map.modes.includes('tdm')) {
+      this.config.mapId = DEFAULT_MATCH_CONFIG.mapId;
+      map = getMap(this.config.mapId);
+    }
     this.config.teamCount = Math.max(2, Math.min(this.config.teamCount, map.maxTeams));
     this.config.teamSize = Math.max(1, Math.min(5, this.config.teamSize));
     if (!map.modes.includes(this.config.mode)) this.config.mode = 'tdm';
@@ -240,7 +263,7 @@ export class Room {
   // -------------------------------------------------------------------------
 
   requestStart(playerId: string): void {
-    if (playerId !== this.hostId) return;
+    if (this.persistent || playerId !== this.hostId) return;
     if (this.phase !== 'lobby') return;
     this.beginCountdown();
   }
@@ -479,7 +502,12 @@ export class Room {
     for (const m of [...this.members.values()]) {
       if (m.isBot || m.socket || m.disconnectedAt === 0) continue;
       if (now - m.disconnectedAt < graceMs) continue;
-      if (this.world && this.phase !== 'lobby') this.convertToBot(m);
+      if (this.persistent) {
+        // Nobody holds a seat in the city, so a player who never came back
+        // simply leaves it; a bot standing in for them would be meaningless.
+        this.members.delete(m.playerId);
+        this.world?.removePlayer(m.playerId);
+      } else if (this.world && this.phase !== 'lobby') this.convertToBot(m);
       else {
         this.members.delete(m.playerId);
         if (this.hostId === m.playerId) this.reassignHost();
@@ -489,6 +517,7 @@ export class Room {
   }
 
   private reapEmpty(now: number): void {
+    if (this.persistent) return;
     const anyHuman = [...this.members.values()].some((m) => !m.isBot && m.socket);
     if (anyHuman) {
       this.emptySince = 0;
@@ -510,6 +539,15 @@ export class Room {
     // A bot-controlled slot ignores client input outright.
     if (!m || m.isBot) return;
     this.world.queueInput(playerId, cmds);
+  }
+
+  /** Answers the free-roam cellphone; ignored anywhere else. */
+  handlePhone(playerId: string, accept: boolean): void {
+    if (!this.world || this.phase !== 'active') return;
+    const member = this.members.get(playerId);
+    const entity = this.world.players.get(playerId);
+    if (!member || member.isBot || !entity) return;
+    this.world.city?.answerPhone(entity, accept);
   }
 
   /** Requests a base defence for a player. All validation happens in the sim. */
@@ -604,8 +642,11 @@ export class Room {
         stats: e
           ? e.stats
           : { kills: 0, deaths: 0, assists: 0, objectiveScore: 0, score: 0, streak: 0, bestStreak: 0, damageDealt: 0 },
+        ...(this.persistent ? { cash: e?.cash ?? 0 } : {}),
       });
     }
+    // The city ranks its richest; matches rank by score.
+    if (this.persistent) return out.sort((a, b) => (b.cash ?? 0) - (a.cash ?? 0));
     return out.sort((a, b) => b.stats.score - a.stats.score || b.stats.kills - a.stats.kills);
   }
 

@@ -1,5 +1,9 @@
 import { create } from 'zustand';
 import {
+  type CashReason,
+  type CrimeKind,
+  type JobWire,
+  type PhoneOfferWire,
   DEFAULT_MATCH_CONFIG,
   type DeployStatusWire,
   type DeployableKind,
@@ -38,6 +42,8 @@ export interface Settings {
   reduceFlashing: boolean;
   quality: 'low' | 'medium' | 'high';
   showLatency: boolean;
+  /** Free-roam contacts' lines and job briefings; off leaves just the job titles. */
+  storyText: boolean;
   bindings: Record<ActionId, string[]>;
 }
 
@@ -52,6 +58,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reduceFlashing: false,
   quality: 'high',
   showLatency: true,
+  storyText: true,
   bindings: DEFAULT_BINDINGS,
 };
 
@@ -150,6 +157,35 @@ export interface HudState {
     stored: boolean;
     at: number;
   } | null;
+  /** Free-roam wanted stars (0-5), and whether they are cooling off. */
+  wanted: number;
+  wantedCooling: boolean;
+  /** Most recent crime of ours, for the HUD callout. */
+  lastCrime: { kind: CrimeKind; stars: number; at: number } | null;
+  /** When we were last arrested, so the respawn screen can say so. */
+  bustedAt: number;
+  /** Town the player is in, 'Open road' between towns, null on maps without towns. */
+  location: string | null;
+  /** Wanted, but outside the town whose police want us. */
+  outOfJurisdiction: boolean;
+  /** Free-roam money and what last changed it. */
+  cash: number;
+  lastCash: { amount: number; reason: CashReason; at: number } | null;
+  /** Latest one-line message from the city (purchases, jobs, garages). */
+  notice: { text: string; at: number } | null;
+  /** The latest line from a job contact (the story layer). */
+  contactLine: { from: string; text: string; at: number } | null;
+  /** Store hold-up progress, 0-1. */
+  holdup: number;
+  job: JobWire | null;
+  /** Milliseconds left on the job, for the countdown. */
+  jobLeftMs: number;
+  /** What the last arrest cost. */
+  lastBail: number;
+  hasPhone: boolean;
+  /** A call ringing now, and how long until it rings off. */
+  phoneOffer: PhoneOfferWire | null;
+  phoneLeftMs: number;
   killFeed: KillFeedEntry[];
   objective: string;
   rtt: number;
@@ -165,6 +201,10 @@ export const EMPTY_HUD: HudState = {
   deployables: [],
   medkits: 0, armorPlates: 0, pouchCooldownMs: 0, jumpCooldownFrac: 0,
   placing: null, nearbyVehicle: null, lastCollect: null,
+  wanted: 0, wantedCooling: false, lastCrime: null, bustedAt: 0,
+  location: null, outOfJurisdiction: false,
+  cash: 0, lastCash: null, notice: null, contactLine: null, holdup: 0, job: null, jobLeftMs: 0, lastBail: 0,
+  hasPhone: false, phoneOffer: null, phoneLeftMs: 0,
   killFeed: [], objective: '', rtt: 0,
 };
 

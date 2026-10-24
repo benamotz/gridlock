@@ -34,7 +34,7 @@ export function SettingsPanel({ onClose, onLeaveMatch }: Props): React.ReactElem
 
   const toggle = (
     label: string,
-    key: 'screenShake' | 'colorblind' | 'reduceFlashing' | 'showLatency',
+    key: 'screenShake' | 'colorblind' | 'reduceFlashing' | 'showLatency' | 'storyText',
     hint?: string,
   ): React.ReactElement => (
     <div className="settings-row" key={key}>
@@ -91,6 +91,11 @@ export function SettingsPanel({ onClose, onLeaveMatch }: Props): React.ReactElem
             'Switches to an accessible palette. Team symbols are always shown.',
           )}
           {toggle('Show network latency', 'showLatency')}
+          {toggle(
+            'Story text',
+            'storyText',
+            'Lines from job contacts in the city. Off shows just the job itself.',
+          )}
         </div>
 
         <div className="divider" />

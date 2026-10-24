@@ -1,6 +1,7 @@
 import type { GameMapDef } from '../types.js';
 import { buildHarborCity } from './harborCity.js';
 import { buildTestArena } from './testArena.js';
+import { buildRegion, townAt } from './region.js';
 
 /**
  * Map registry. Definitions are built lazily and cached - generation is
@@ -9,6 +10,7 @@ import { buildTestArena } from './testArena.js';
 const builders: Record<string, () => GameMapDef> = {
   'depot-yard': buildTestArena,
   'harbor-reach': buildHarborCity,
+  'kestrel-region': buildRegion,
 };
 
 const cache = new Map<string, GameMapDef>();
@@ -49,4 +51,4 @@ export const mapSummaries = (): MapSummary[] =>
     };
   });
 
-export { buildTestArena, buildHarborCity };
+export { buildTestArena, buildHarborCity, buildRegion, townAt };

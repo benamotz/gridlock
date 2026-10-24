@@ -563,3 +563,172 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .vehicle-traits li { margin: 1px 0; }
 .vehicle-traits .pro { color: #8ce0a8; }
 .vehicle-traits .con { color: #ffb3ba; }
+
+/* Free-roam wanted level: five stars where the team score sits in team modes. */
+.hud-wanted {
+  position: absolute; top: 14px; left: 50%; transform: translateX(-50%);
+  display: flex; gap: 3px;
+  background: rgba(10, 13, 20, 0.72); border: 1px solid var(--line);
+  border-radius: 6px; padding: 3px 10px;
+  font-size: 22px; line-height: 1;
+}
+.hud-wanted .star { color: rgba(255, 255, 255, 0.16); }
+.hud-wanted .star.on { color: #ffd23f; text-shadow: 0 0 8px rgba(255, 196, 0, 0.6); }
+.hud-wanted.cooling .star.on { animation: wanted-blink 0.9s steps(2, jump-none) infinite; }
+@keyframes wanted-blink { 50% { opacity: 0.25; } }
+.hud-crime {
+  position: absolute; top: 128px; left: 50%; transform: translateX(-50%);
+  background: #ff3b4e; color: #fff; font-weight: 800; letter-spacing: 0.08em;
+  text-transform: uppercase; font-size: 12px; padding: 3px 10px; border-radius: 4px;
+  animation: crime-pop 1.8s ease-out forwards;
+}
+@keyframes crime-pop {
+  0% { transform: translate(-50%, -6px) scale(0.9); opacity: 0; }
+  10% { transform: translate(-50%, 0) scale(1.08); opacity: 1; }
+  20% { transform: translate(-50%, 0) scale(1); }
+  80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-wanted.cooling .star.on, .hud-crime { animation: none; }
+}
+.hud-location {
+  position: absolute; top: 52px; left: 50%; transform: translateX(-50%);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
+  color: rgba(230, 236, 245, 0.85); text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+.hud-location .away { color: #7ef3a4; text-transform: none; letter-spacing: 0.02em; font-weight: 600; }
+
+/* Free-roam money, jobs and messages. */
+.hud-cash {
+  position: absolute; top: 14px; left: calc(50% + 92px);
+  display: flex; align-items: center; gap: 8px;
+  background: rgba(10, 13, 20, 0.72); border: 1px solid var(--line);
+  border-radius: 6px; padding: 4px 10px;
+  font: 800 17px ui-monospace, monospace; color: #7ef3a4;
+  white-space: nowrap;
+}
+.hud-cash-figure { display: inline-block; font-variant-numeric: tabular-nums; }
+.hud-cash.gain .hud-cash-figure { animation: cash-bounce 0.5s cubic-bezier(.3, 1.6, .5, 1); }
+.hud-cash.big { border-color: #ffd23f; animation: cash-glow 1.4s ease-out; }
+.hud-cash.big .hud-cash-figure { color: #ffd23f; animation: cash-bounce 0.7s cubic-bezier(.3, 1.8, .5, 1); }
+.hud-cash.loss { color: #ff7a85; animation: cash-shake 0.4s ease-in-out; }
+.hud-cash-delta {
+  font-size: 12px; font-weight: 700;
+  animation: cash-chip 1.8s ease-out forwards;
+}
+.hud-cash-delta.up { color: #7ef3a4; }
+.hud-cash.big .hud-cash-delta.up { color: #ffd23f; }
+.hud-cash-delta.down { color: #ff7a85; }
+.hud-cash-burst { position: absolute; left: 30%; top: 50%; pointer-events: none; }
+.hud-cash-burst i {
+  position: absolute; font-style: normal; font-size: 13px; color: #ffd23f;
+  text-shadow: 0 0 6px rgba(255, 196, 0, 0.8);
+  animation: cash-burst 0.9s ease-out forwards;
+  transform: rotate(var(--a)) translateY(0);
+}
+@keyframes cash-bounce {
+  0% { transform: scale(1); }
+  35% { transform: scale(1.35) translateY(-2px); }
+  100% { transform: scale(1); }
+}
+@keyframes cash-glow {
+  0% { box-shadow: 0 0 0 rgba(255, 210, 63, 0); }
+  20% { box-shadow: 0 0 22px rgba(255, 210, 63, 0.75); }
+  100% { box-shadow: 0 0 0 rgba(255, 210, 63, 0); }
+}
+@keyframes cash-shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-5px); }
+  40% { transform: translateX(5px); }
+  60% { transform: translateX(-3px); }
+  80% { transform: translateX(3px); }
+}
+@keyframes cash-chip {
+  0% { opacity: 0; transform: translateY(6px); }
+  12% { opacity: 1; transform: translateY(0); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-8px); }
+}
+@keyframes cash-burst {
+  0% { opacity: 1; transform: rotate(var(--a)) translateY(0) scale(0.6); }
+  100% { opacity: 0; transform: rotate(var(--a)) translateY(-38px) scale(1.1); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .hud-cash, .hud-cash-figure, .hud-cash-delta, .hud-cash-burst i { animation: none !important; }
+}
+.hud-job {
+  position: absolute; top: 74px; left: 50%; transform: translateX(-50%);
+  background: rgba(10, 13, 20, 0.8); border: 1px solid var(--line);
+  border-left: 3px solid #1dd1a1; border-radius: 6px; padding: 5px 12px;
+  text-align: center; white-space: nowrap;
+}
+.hud-job.kind-hit { border-left-color: #ff3b4e; }
+.hud-job-title { font-size: 12px; font-weight: 700; color: #eef2f8; }
+.hud-job-meta { font-size: 11px; color: var(--muted); }
+.hud-holdup {
+  position: absolute; bottom: 190px; left: 50%; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 4px;
+  font-size: 12px; font-weight: 700; color: #feca57;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+}
+.hud-holdup-bar { width: 180px; height: 8px; background: rgba(0, 0, 0, 0.6); border-radius: 4px; overflow: hidden; }
+.hud-holdup-bar > div { height: 100%; background: #feca57; transition: width 120ms linear; }
+.hud-notice {
+  position: absolute; top: 160px; left: 50%; transform: translateX(-50%);
+  background: rgba(10, 13, 20, 0.85); border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 12px; font-size: 12px; color: #eef2f8; white-space: nowrap;
+  animation: notice-fade 3.2s ease-out forwards;
+}
+@keyframes notice-fade { 0% { opacity: 0; } 8% { opacity: 1; } 85% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .hud-notice { animation: none; }
+}
+
+/* Cellphone: an incoming job offer, above the weapon panel on the right. */
+.hud-phone {
+  position: absolute; right: 16px; bottom: 200px; width: 250px;
+  background: rgba(10, 13, 20, 0.88); border: 1px solid var(--line);
+  border-left: 3px solid #1dd1a1; border-radius: 8px; padding: 8px 12px;
+  animation: phone-in 0.25s ease-out;
+}
+.hud-phone.kind-hit { border-left-color: #ff3b4e; }
+.hud-phone-head { font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.hud-phone-icon { display: inline-block; color: #1dd1a1; animation: phone-buzz 0.6s steps(2, jump-none) infinite; }
+.hud-phone-text { font-size: 13px; font-weight: 700; color: #eef2f8; margin: 3px 0; }
+.hud-phone-keys { font-size: 11px; color: var(--muted); }
+.hud-phone-keys b { color: #eef2f8; }
+@keyframes phone-in { from { transform: translateX(20px); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes phone-buzz { 50% { transform: rotate(-14deg); } }
+@media (prefers-reduced-motion: reduce) {
+  .hud-phone, .hud-phone-icon { animation: none; }
+}
+.hud-death-loss {
+  margin-top: 6px; font: 800 18px ui-monospace, monospace; color: #ff7a85;
+  animation: cash-shake 0.4s ease-in-out;
+}
+@media (prefers-reduced-motion: reduce) { .hud-death-loss { animation: none; } }
+
+/* Story layer: who a job is for, and what they say about it. */
+.hud-job-contact { font-size: 10px; letter-spacing: 0.1em; text-transform: uppercase; color: #feca57; }
+.hud-job.kind-boost { border-left-color: #ff9f43; }
+.hud-job.kind-armored { border-left-color: #feca57; }
+.hud-job.kind-decoy { border-left-color: #54a0ff; }
+.hud-job.kind-bounty { border-left-color: #ff3b4e; }
+.hud-job.kind-hideout { border-left-color: #ff6b6b; }
+.hud-phone-brief { font-size: 12px; font-style: italic; color: #d8dee9; margin-top: 4px; white-space: normal; }
+.hud-contact-line {
+  position: absolute; top: 196px; left: 50%; transform: translateX(-50%);
+  max-width: min(560px, 80vw); text-align: center;
+  background: rgba(10, 13, 20, 0.82); border: 1px solid var(--line); border-radius: 6px;
+  padding: 5px 12px; font-size: 13px; font-style: italic; color: #eef2f8;
+  animation: notice-fade 5.5s ease-out forwards;
+}
+.hud-contact-line b { font-style: normal; color: #feca57; }
+@media (prefers-reduced-motion: reduce) { .hud-contact-line { animation: none; } }
+
+/* Free-roam greeting: up on arrival, faded out by the time it is removed. */
+.hud-greeting { animation: greeting-fade 5s ease-in forwards; }
+@keyframes greeting-fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .hud-greeting { animation: none; } }
