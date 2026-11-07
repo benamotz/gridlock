@@ -132,6 +132,16 @@ export function createGameServer(opts: GameServerOptions = {}): GameServer {
     server,
     path: '/ws',
     maxPayload: 16 * 1024,
+    // Snapshots are repetitive JSON: compressed they are 4-5x smaller on their
+    // own and much smaller still with the shared window across messages. A
+    // city player was being sent ~110 KB/s uncompressed - about 400 MB an hour
+    // of mobile data, and enough to queue up on a weak phone link (measured
+    // 925 ms round trips over home Wi-Fi). Level 1 is the cheap setting; tiny
+    // messages (pongs, inputs echoes) are not worth compressing.
+    perMessageDeflate: {
+      zlibDeflateOptions: { level: 1 },
+      threshold: 512,
+    },
     verifyClient: (info, done) => {
       if (originAllowed(info.req, allowedOrigins, hops)) {
         done(true);

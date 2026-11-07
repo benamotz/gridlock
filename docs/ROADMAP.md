@@ -190,6 +190,19 @@ The free tier's 0.1 CPU carries one full match with little headroom; if
 
 ## Mobile-first (in progress)
 
+**Mobile v1 for Free Roam is built (2026-10-27) - spec and decisions in
+[MOBILE.md](MOBILE.md).** Touch layer (`packages/client/src/game/touch/`):
+floating move stick, hybrid fire stick with civilian-safe auto-target and a
+target marker, context button from the server prompt, on-screen buttons,
+call Take/Pass, compact touch HUD (`.touch-ui`), viewport camera zoom, phone
+defaults, web app manifest + pass-through service worker + icons, tap to
+play, rotate prompt, Touch settings. Desktop is unchanged (verified). Fixed on
+the way: client prediction ignored analog axes; a fresh client (reconnect or
+reload) restarted command numbers at 1 and every input was dropped as a replay
+until it caught up. Still to verify: a real phone (feel, frame rate, iOS).
+
+The earlier plan below is kept for reference.
+
 ### Decisions (agreed 2026-09-12)
 
 - **Landscape only.** Portrait shows a "rotate your device" prompt.

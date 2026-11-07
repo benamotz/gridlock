@@ -206,6 +206,9 @@ export class InputManager {
     }, { signal });
     el.addEventListener('mousedown', (e) => {
       if (!this.enabled) return;
+      // A press on an on-screen button (the touch HUD) is that button's, not a
+      // click on the world: it must not also place a defence or fire.
+      if ((e.target as Element | null)?.closest?.('button')) return;
       if (e.button === 0 && this.callbacks.onPrimaryClick?.()) return;
       if (e.button === 2 && this.callbacks.onSecondaryClick?.()) return;
       this.held.add(`Mouse${e.button}`);

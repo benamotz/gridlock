@@ -1,4 +1,5 @@
 import {
+  commandAxes,
   Btn,
   CollisionGrid,
   type DeployableKind,
@@ -31,6 +32,9 @@ import {
 } from '@gridlock/shared';
 import { Renderer, type Effect } from '../render/Renderer.js';
 import { Minimap } from '../render/minimap.js';
+import { type TouchAction, TouchInput, type TouchOptions, type TouchSampleContext } from './touch/TouchInput.js';
+import { buzz, touchEnabled } from './touch/device.js';
+import { PerfMeter } from './perfMeter.js';
 import { InputManager } from './input.js';
 import type { ClientSocket } from '../net/ClientSocket.js';
 import { GameAudio } from '../audio/Audio.js';
@@ -142,6 +146,16 @@ export class GameClient {
 
   settings: Settings;
 
+  /** The touch layer, while touch controls are on; null on desktop. */
+  private touch: TouchInput | null = null;
+  private touchHost: HTMLElement | null = null;
+  /** Who a touch tap would hit, for the marker. */
+  private touchTarget: { x: number; y: number } | null = null;
+  /** Players who hurt us, and when: fair auto-targets for a while. */
+  private readonly hurtBy = new Map<string, number>();
+  /** On-screen performance readout, when switched on. */
+  private perf: PerfMeter | null = null;
+
   constructor(
     private canvas: HTMLCanvasElement,
     private minimapCanvas: HTMLCanvasElement,
@@ -170,12 +184,7 @@ export class GameClient {
       onMenu: () => this.callbacks.onMenu(),
       onChat: () => this.callbacks.onChat(),
       onDeploy: (kind) => this.onDeployKey(kind),
-      onPhone: (accept) => {
-        // Only a ringing phone can be answered; stray presses send nothing.
-        if (this.latest?.self.phoneOffer) {
-          this.socket.send({ t: 'phone', answer: accept ? 'accept' : 'decline' });
-        }
-      },
+      onPhone: (accept) => this.answerPhone(accept),
       onWheel: (direction) => this.placement.rotate(direction),
       onPrimaryClick: () => this.confirmPlacement(),
       onSecondaryClick: () => this.cancelPlacement(),
@@ -191,17 +200,139 @@ export class GameClient {
 
   applySettings(settings: Settings): void {
     this.settings = settings;
+    this.syncPerf();
     this.input.setBindings(settings.bindings);
     this.input.sensitivity = settings.sensitivity;
     this.audio.applySettings(settings);
+    this.syncTouch();
     this.handleResize();
   }
 
   setInputEnabled(on: boolean): void {
     this.input.setEnabled(on);
+    this.touch?.setEnabled(on);
+  }
+
+  // -------------------------------------------------------------------------
+  // Touch
+  // -------------------------------------------------------------------------
+
+  /** Where the touch layer lives. It is created or removed as the setting changes. */
+  attachTouch(host: HTMLElement | null): void {
+    this.touchHost = host;
+    this.syncTouch();
+  }
+
+  get touchActive(): boolean {
+    return this.touch !== null;
+  }
+
+  private syncTouch(): void {
+    const want = this.touchHost !== null && touchEnabled(this.settings.touchControls);
+    if (want && !this.touch) this.touch = new TouchInput(this.touchHost!, this.touchOptions());
+    else if (!want && this.touch) {
+      this.touch.dispose();
+      this.touch = null;
+      this.touchTarget = null;
+    } else this.touch?.setOptions(this.touchOptions());
+    // Phones have far less memory for the cached city ground.
+    this.renderer.setChunkCacheLimit(this.touch ? 40 : 96);
+  }
+
+  private touchOptions(): TouchOptions {
+    const radius = { S: 46, M: 56, L: 68 }[this.settings.touchButtonSize] ?? 56;
+    return {
+      leftHanded: this.settings.leftHanded,
+      fireMode: this.settings.touchFire,
+      driveMode: this.settings.touchDrive,
+      radius,
+    };
+  }
+
+  /** An on-screen button went down or up. */
+  touchPress(action: TouchAction, down: boolean): void {
+    this.touch?.press(action, down);
+    // Any touch is a user gesture: the moment to unlock audio on mobile.
+    this.audio.resume();
+  }
+
+  touchSlot(slot: number): void {
+    this.touch?.selectSlot(slot);
+  }
+
+  /**
+   * A defence button: the first tap opens placement for that defence, a second
+   * tap on the same one places it - the same double-tap as the keyboard keys.
+   */
+  touchDeploy(kind: DeployableKind): void {
+    this.onDeployKey(kind);
+    this.audio.resume();
+  }
+
+  touchPlace(): void {
+    this.confirmPlacement();
+  }
+
+  touchRotate(): void {
+    this.placement.rotate(1);
+  }
+
+  touchCancelPlacement(): void {
+    this.cancelPlacement();
+  }
+
+  toggleMap(): void {
+    this.mapExpanded = !this.mapExpanded;
+  }
+
+  unlockAudio(): void {
+    this.audio.resume();
+  }
+
+  /** Answers the cellphone; only a ringing phone can be answered. */
+  answerPhone(accept: boolean): void {
+    if (this.latest?.self.phoneOffer) {
+      this.socket.send({ t: 'phone', answer: accept ? 'accept' : 'decline' });
+    }
+  }
+
+  private touchContext(snap: SnapshotMsg, now: number): TouchSampleContext {
+    const latest = this.buffer[this.buffer.length - 1];
+    const weapon = snap.self.weapons[snap.self.slot];
+    const def = weapon ? weaponDef(weapon.id) : null;
+    return {
+      now,
+      inVehicle: snap.self.vehicleId !== null,
+      isDriver: snap.self.seat === 0,
+      semiAuto: !!def && (def.rpm < 200 || def.class === 'throwable'),
+      targets: {
+        selfId: this.playerId,
+        selfX: this.predicted.x,
+        selfY: this.predicted.y,
+        selfTeam: snap.self.team,
+        selfWanted: snap.self.wanted,
+        freeRoam: this.config.mode === 'freeroam',
+        players: latest?.players ?? snap.players,
+        hurtBy: this.hurtBy,
+        now,
+        range: def?.range ?? 400,
+        lineOfSight: (x0, y0, x1, y1) => this.grid.lineOfSight(x0, y0, x1, y1),
+      },
+    };
+  }
+
+  /** The performance readout: Settings, or `?perf` in the address. */
+  private syncPerf(): void {
+    const want = this.settings.showPerf || /[?&]perf\b/.test(window.location.search);
+    if (want && !this.perf && this.canvas.parentElement) this.perf = new PerfMeter(this.canvas.parentElement);
+    else if (!want && this.perf) {
+      this.perf.dispose();
+      this.perf = null;
+    }
   }
 
   start(): void {
+    this.syncPerf();
     if (this.running) return;
     this.running = true;
     this.lastFrameAt = performance.now();
@@ -212,9 +343,13 @@ export class GameClient {
 
   stop(): void {
     this.running = false;
+    this.perf?.dispose();
+    this.perf = null;
     cancelAnimationFrame(this.raf);
     window.removeEventListener('resize', this.handleResize);
     this.input.dispose();
+    this.touch?.dispose();
+    this.touch = null;
     this.audio.dispose();
   }
 
@@ -288,6 +423,12 @@ export class GameClient {
     this.predicted.jumpHeld = this.ackJumpHeld;
 
     this.pending = this.pending.filter((c) => c.seq > snap.self.ack);
+    // A fresh client (after a reconnect, or a reload) starts counting at 1, but
+    // the server keeps the player - and the last command it processed - and
+    // ignores anything numbered at or below it as a replay. Without this the
+    // player was frozen after a reconnect until the count caught up, which in
+    // the always-on city could take minutes.
+    if (this.seq <= snap.self.ack) this.seq = snap.self.ack + 1;
 
     const inVehicle = snap.self.vehicleId !== null;
     const serverVehicle = inVehicle
@@ -328,12 +469,14 @@ export class GameClient {
     const dt = Math.min(cmd.dtMs, GAMEPLAY.maxCommandDtMs) / 1000;
     if (this.predictedVehicle && vehicleType) {
       const v = { ...this.predictedVehicle, type: vehicleType };
-      stepVehicle(v, cmd.buttons, dt, this.grid);
+      // Analog axes (touch sticks) must be replayed too, or every touch move
+      // would be mispredicted and snapped back by the server.
+      stepVehicle(v, cmd.buttons, dt, this.grid, commandAxes(cmd));
       this.predictedVehicle = { x: v.x, y: v.y, rot: v.rot, vx: v.vx, vy: v.vy };
       return null;
     }
     const weapon = snap.self.weapons[snap.self.slot]?.id ?? 'fists';
-    return stepPlayerMovement(this.predicted, weapon, cmd.buttons, dt, this.grid);
+    return stepPlayerMovement(this.predicted, weapon, cmd.buttons, dt, this.grid, commandAxes(cmd));
   }
 
   private onEvent(e: GameEvent): void {
@@ -389,10 +532,24 @@ export class GameClient {
         this.audio.play('explosion', this.panFor(e.x), this.gainFor(e.x, e.y));
         this.renderer.camera.addShake(0.6);
         break;
-      case 'damage':
+      case 'damage': {
         this.audio.play('hurt', 0, 1);
         this.renderer.camera.addShake(Math.min(0.35, e.amount / 90));
+        // Remember who it came from: someone who shot you is a fair auto-target.
+        const latest = this.buffer[this.buffer.length - 1];
+        let attacker: string | null = null;
+        let best = 60;
+        for (const p of latest?.players ?? []) {
+          const d = Math.hypot(p.x - e.fromX, p.y - e.fromY);
+          if (d < best) {
+            best = d;
+            attacker = p.id;
+          }
+        }
+        if (attacker) this.hurtBy.set(attacker, now);
+        if (this.touch && this.settings.haptics) buzz(25);
         break;
+      }
       case 'pickup': {
         if (this.playerId && e.by === this.playerId) {
           // Ours: the grab was usually already animated the moment we reached
@@ -500,6 +657,8 @@ export class GameClient {
   private frame = (now: number): void => {
     if (!this.running) return;
     this.raf = requestAnimationFrame(this.frame);
+    const perf = this.perf;
+    perf?.frameStart(now);
 
     const dt = Math.min(0.05, (now - this.lastFrameAt) / 1000);
     this.lastFrameAt = now;
@@ -507,7 +666,9 @@ export class GameClient {
     const snap = this.latest;
     if (!snap) return;
 
+    perf?.begin();
     this.sampleAndSendInput(snap, dt, now);
+    perf?.end('input');
 
     // Advance the interpolation clock, nudging it toward the ideal delay so it
     // recovers smoothly from jitter instead of stuttering.
@@ -528,8 +689,13 @@ export class GameClient {
     const drivingDef = inVehicle
       ? snap.vehicles.find((v) => v.id === snap.self.vehicleId)
       : undefined;
+    // On touch the camera pulls back to the screen's size, so a phone sees a
+    // slice of the city like a desktop does (desktop keeps zoom 1).
+    const base = this.touch
+      ? Math.min(1, Math.min(this.renderer.viewWidth, this.renderer.viewHeight) / 620)
+      : 1;
     this.renderer.camera.setZoom(
-      drivingDef ? vehicleDef(drivingDef.type).cameraZoom : 1,
+      base * (drivingDef ? vehicleDef(drivingDef.type).cameraZoom : 1),
     );
     // Look further ahead when driving; a short lead toward the aim on foot.
     const vel = this.predictedVehicle ?? this.predicted;
@@ -575,6 +741,7 @@ export class GameClient {
     // A request the server never answered must not lock placement forever.
     if (this.deployPending && now - this.deployPending.at > 1500) this.deployPending = null;
 
+    perf?.begin();
     this.renderer.draw({
       map: this.map,
       grid: this.grid,
@@ -600,6 +767,7 @@ export class GameClient {
       pickups: snap.pickups.filter((p) => !this.collection.isHidden(p.id)),
       money: snap.money ?? [],
       job: snap.self.job,
+      touchTarget: this.touchTarget,
       effects: this.effects,
       colorblind: this.settings.colorblind,
       screenShake: this.settings.screenShake,
@@ -608,7 +776,9 @@ export class GameClient {
       lastHitLethal: this.lastHitLethal,
       time: now,
     }, dt);
+    perf?.end('world');
 
+    perf?.begin();
     this.minimap.draw(this.minimapCanvas, {
       map: this.map,
       selfX: drawX,
@@ -623,6 +793,14 @@ export class GameClient {
       colorblind: this.settings.colorblind,
       expanded: this.mapExpanded,
     });
+    if (perf) {
+      perf.end('minimap');
+      const r = this.renderer;
+      perf.frameEnd(
+        `${interpolated.players.length} people · ${interpolated.vehicles.length} vehicles · ` +
+        `${Math.round(r.viewWidth)}x${Math.round(r.viewHeight)} @${r.pixelRatio.toFixed(1)}x · zoom ${r.camera.zoom.toFixed(2)}`,
+      );
+    }
   };
 
   private lastAim = 0;
@@ -733,7 +911,8 @@ export class GameClient {
     if (!this.placement.active) return false;
     if (this.deployPending) return true;
 
-    const aim = this.input.aimNow();
+    // On touch the aim is whatever the right stick (or facing) gave this frame.
+    const aim = this.touch ? this.lastAim : this.input.aimNow();
     const ghost = this.computeGhost(aim);
     if (!ghost) return true;
     this.lastGhost = ghost;
@@ -758,10 +937,27 @@ export class GameClient {
 
   private sampleAndSendInput(snap: SnapshotMsg, dt: number, now: number): void {
     const sample = this.input.sample(snap.self.slot, SLOT_COUNT);
-    // Aim assist pulls toward nearby enemies, which would drag a placement
-    // preview toward whoever is shooting you - and away from the aim the click
-    // actually sends. Placing a defence always uses the raw aim.
-    if (!this.placement.active) sample.aim = this.applyAimAssist(sample.aim, snap);
+    let axes: { ax?: number; ay?: number } = {};
+    if (this.touch) {
+      // Touch and keyboard merge: a phone with a keyboard attached still works.
+      // While placing a defence the aim points the preview, so it must not be
+      // pulled toward enemies by the auto target or by aim assist.
+      const placing = this.placement.active;
+      const t = this.touch.sample({ ...this.touchContext(snap, now), noTarget: placing });
+      sample.buttons |= t.buttons;
+      if (t.slot >= 0) sample.slot = t.slot;
+      // An auto target is aimed at exactly; only a hand-dragged aim is assisted.
+      sample.aim = t.aimSource === 'drag' && !placing
+        ? this.applyAimAssist(t.aim, snap, this.settings.touchAimAssist)
+        : t.aim;
+      this.touchTarget = t.target ? { x: t.target.x, y: t.target.y } : null;
+      if (t.ax !== undefined) axes = { ax: t.ax, ay: t.ay };
+    } else if (!this.placement.active) {
+      // Aim assist pulls toward nearby enemies, which would drag a placement
+      // preview toward whoever is shooting you - and away from the aim the click
+      // actually sends. Placing a defence always uses the raw aim.
+      sample.aim = this.applyAimAssist(sample.aim, snap);
+    }
     this.lastAim = sample.aim;
 
     // Placement mode closes itself when it stops making sense.
@@ -779,6 +975,7 @@ export class GameClient {
       buttons: sample.buttons,
       aim: sample.aim,
       slot: sample.slot,
+      ...axes,
     };
 
     // Predict immediately, so the local player responds on the same frame the
@@ -828,8 +1025,7 @@ export class GameClient {
    * and range, requires line of sight, and is fully adjustable (0 disables it),
    * so it helps tracking without aiming for the player.
    */
-  private applyAimAssist(aim: number, snap: SnapshotMsg): number {
-    const strength = this.settings.aimAssist;
+  private applyAimAssist(aim: number, snap: SnapshotMsg, strength = this.settings.aimAssist): number {
     if (strength <= 0 || snap.self.life !== 'alive') return aim;
 
     const latest = this.buffer[this.buffer.length - 1];

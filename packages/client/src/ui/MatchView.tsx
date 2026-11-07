@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import type { MatchConfig, SnapshotMsg } from '@gridlock/shared';
 import { GameClient } from '../game/GameClient.js';
 import type { ClientSocket } from '../net/ClientSocket.js';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../store.js';
 import { HUD } from './HUD.js';
 import { Scoreboard } from './Scoreboard.js';
 import { SettingsPanel } from './Settings.js';
+import { TouchHud } from './TouchHud.js';
+import { touchEnabled } from '../game/touch/device.js';
 
 interface Props {
   socket: ClientSocket;
@@ -26,14 +29,27 @@ interface Props {
 export function MatchView(props: Props): React.ReactElement {
   const worldRef = useRef<HTMLCanvasElement>(null);
   const minimapRef = useRef<HTMLCanvasElement>(null);
+  /** Hosts the touch thumb zones, between the world canvas and the HUD. */
+  const touchRef = useRef<HTMLDivElement>(null);
   const clientRef = useRef<GameClient | null>(null);
   /** Wall-clock time the last snapshot reached the HUD. */
   const lastSnapshotAt = useRef(Date.now());
   const [mapExpanded, setMapExpanded] = useState(false);
   const [stalled, setStalled] = useState(false);
   const {
-    settings, settingsOpen, showScoreboard, scoreboard, hud, status, set, pushKills,
-  } = useStore();
+    settings, settingsOpen, showScoreboard, scoreboard, teamScores, status, set, pushKills,
+  } = useStore(useShallow((s) => ({
+    // Only what this view uses: the HUD's 15-a-second updates must not
+    // re-render the canvas host and everything under it.
+    settings: s.settings,
+    settingsOpen: s.settingsOpen,
+    showScoreboard: s.showScoreboard,
+    scoreboard: s.scoreboard,
+    teamScores: s.hud.teamScores,
+    status: s.status,
+    set: s.set,
+    pushKills: s.pushKills,
+  })));
 
   // The client is created once per match; changing settings updates it in place.
   useEffect(() => {
@@ -56,6 +72,7 @@ export function MatchView(props: Props): React.ReactElement {
       },
     );
     client.setPlayerId(useStore.getState().playerId);
+    client.attachTouch(touchRef.current);
     clientRef.current = client;
     props.onClient(client);
     client.start();
@@ -86,11 +103,21 @@ export function MatchView(props: Props): React.ReactElement {
     clientRef.current?.setInputEnabled(!settingsOpen);
   }, [settingsOpen]);
 
-  const minimapSize = mapExpanded ? 620 : 190;
+  const touch = touchEnabled(settings.touchControls);
+  // On a phone the map stays a corner widget and opens as an overlay that never
+  // fills the screen.
+  const minimapSize = touch ? (mapExpanded ? 340 : 116) : mapExpanded ? 620 : 190;
+  const rootClass = [
+    'match-root',
+    touch ? 'touch-ui' : '',
+    touch && settings.leftHanded ? 'left-handed' : '',
+    touch ? `btn-${settings.touchButtonSize}` : '',
+  ].filter(Boolean).join(' ');
 
   return (
-    <div className="match-root">
+    <div className={rootClass}>
       <canvas className="world" ref={worldRef} />
+      <div className="touch-host" ref={touchRef} />
 
       <div className={`minimap-wrap${mapExpanded ? ' expanded' : ''}`}>
         <canvas ref={minimapRef} width={minimapSize} height={minimapSize} />
@@ -105,8 +132,24 @@ export function MatchView(props: Props): React.ReactElement {
         }
       />
 
+      {touch && (
+        <TouchHud
+          client={() => clientRef.current}
+          onToggleMap={() => {
+            clientRef.current?.toggleMap();
+            setMapExpanded((v) => !v);
+          }}
+          onToggleScoreboard={() => set({ showScoreboard: !useStore.getState().showScoreboard })}
+          onMenu={() => set({ settingsOpen: !useStore.getState().settingsOpen })}
+        />
+      )}
+
       {showScoreboard && (
-        <Scoreboard entries={scoreboard} teamScores={hud.teamScores} />
+        <Scoreboard
+          entries={scoreboard}
+          teamScores={teamScores}
+          onClose={touch ? () => set({ showScoreboard: false }) : undefined}
+        />
       )}
 
       {settingsOpen && (

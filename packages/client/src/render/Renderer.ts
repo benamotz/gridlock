@@ -21,7 +21,7 @@ import { drawActorBody, drawCorpse, drawPickupIcon, drawVehicle, shade } from '.
 import type { PlacementGhost } from '../game/placement.js';
 import { COLLECT_ANIM_MS, type CollectAnim } from '../game/collection.js';
 import { drawWeaponIconCanvas } from './weaponIcons.js';
-import { drawJob, drawMarked, drawMoney, drawServices } from './cityLayer.js';
+import { drawJob, drawMarked, drawMoney, drawServices, drawTargetMarker } from './cityLayer.js';
 import {
   FX, PICKUP_STYLE, PLAYER, RESIDENT, VEHICLE, WORLD, residentColor, teamColorFor, teamSymbol,
 } from './assets.js';
@@ -72,6 +72,8 @@ export interface RenderState {
   money: MoneyWire[];
   /** The local player's phone-booth job, if any. */
   job: JobWire | null;
+  /** Who a touch tap would hit right now. */
+  touchTarget?: { x: number; y: number } | null;
   effects: Effect[];
   colorblind: boolean;
   screenShake: boolean;
@@ -103,6 +105,8 @@ export class Renderer {
     map: GameMapDef,
     grid: CollisionGrid,
   ) {
+    // Not `desynchronized`: it saves a frame of latency on Android but shows
+    // half-drawn frames, which tore the picture into horizontal bands on a phone.
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) throw new Error('Canvas 2D context unavailable');
     this.ctx = ctx;
@@ -118,6 +122,16 @@ export class Renderer {
     this.canvas.height = Math.floor(height * this.dpr);
     this.canvas.style.width = `${width}px`;
     this.canvas.style.height = `${height}px`;
+  }
+
+  /** How many ground chunks to keep cached; phones get fewer. */
+  setChunkCacheLimit(n: number): void {
+    this.statics.maxChunks = n;
+  }
+
+  /** Device pixels per CSS pixel the canvas is drawn at. */
+  get pixelRatio(): number {
+    return this.dpr;
   }
 
   get viewWidth(): number {
@@ -161,6 +175,7 @@ export class Renderer {
     this.drawCollections(s);
     this.drawGhost(s);
     drawMarked(ctx, s.players, s.time);
+    if (s.touchTarget) drawTargetMarker(ctx, s.touchTarget.x, s.touchTarget.y, s.time);
     this.drawLabels(s, cull);
     drawJob(ctx, s.job, s.selfX, s.selfY, view, s.time);
 

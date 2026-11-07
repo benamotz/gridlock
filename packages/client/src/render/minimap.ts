@@ -85,7 +85,21 @@ export class Minimap {
     ctx.rect(0, 0, w, h);
     ctx.clip();
 
-    ctx.drawImage(base, cx, cy, s.map.width * scale, s.map.height * scale);
+    // Copy only the visible part of the cached map. Downscaling the whole image
+    // (2048 px wide on the big region) every frame was wasted work, and on a
+    // phone a noticeable share of each frame.
+    const bs = base.width / s.map.width;
+    const wx0 = Math.max(0, -cx / scale);
+    const wy0 = Math.max(0, -cy / scale);
+    const wx1 = Math.min(s.map.width, (w - cx) / scale);
+    const wy1 = Math.min(s.map.height, (h - cy) / scale);
+    if (wx1 > wx0 && wy1 > wy0) {
+      ctx.drawImage(
+        base,
+        wx0 * bs, wy0 * bs, (wx1 - wx0) * bs, (wy1 - wy0) * bs,
+        cx + wx0 * scale, cy + wy0 * scale, (wx1 - wx0) * scale, (wy1 - wy0) * scale,
+      );
+    }
 
     const wx = (x: number) => cx + x * scale;
     const wy = (y: number) => cy + y * scale;

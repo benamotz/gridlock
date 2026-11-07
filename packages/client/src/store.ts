@@ -18,6 +18,7 @@ import {
 } from '@gridlock/shared';
 import { DEFAULT_BINDINGS, type ActionId } from './game/input.js';
 import type { ConnectionStatus } from './net/ClientSocket.js';
+import { isTouchDevice } from './game/touch/device.js';
 
 export type Screen =
   | 'connecting'
@@ -44,6 +45,21 @@ export interface Settings {
   showLatency: boolean;
   /** Free-roam contacts' lines and job briefings; off leaves just the job titles. */
   storyText: boolean;
+  /** Touch controls: Auto shows them on touch screens only. */
+  touchControls: 'auto' | 'on' | 'off';
+  /** Right thumb: the hybrid fire stick, or a plain fire button. */
+  touchFire: 'stick' | 'button';
+  /** Touch driving: push where you want to go, or steer like a car. */
+  touchDrive: 'screen' | 'car';
+  /** Aim assist for manual (dragged) touch aim, 0-1. */
+  touchAimAssist: number;
+  /** Mirrors the touch layout: move on the right, fire on the left. */
+  leftHanded: boolean;
+  touchButtonSize: 'S' | 'M' | 'L';
+  /** Short vibrations on touch devices that support them (not iOS Safari). */
+  haptics: boolean;
+  /** On-screen frame rate and timing readout, for checking performance on a device. */
+  showPerf: boolean;
   bindings: Record<ActionId, string[]>;
 }
 
@@ -59,6 +75,14 @@ export const DEFAULT_SETTINGS: Settings = {
   quality: 'high',
   showLatency: true,
   storyText: true,
+  touchControls: 'auto',
+  touchFire: 'stick',
+  touchDrive: 'screen',
+  touchAimAssist: 0.85,
+  leftHanded: false,
+  touchButtonSize: 'M',
+  haptics: true,
+  showPerf: false,
   bindings: DEFAULT_BINDINGS,
 };
 
@@ -67,7 +91,8 @@ const SETTINGS_KEY = 'gridlock.settings';
 export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
-    if (!raw) return DEFAULT_SETTINGS;
+    // A phone's first visit starts on lighter graphics; desktop is unchanged.
+    if (!raw) return isTouchDevice() ? { ...DEFAULT_SETTINGS, quality: 'medium' } : DEFAULT_SETTINGS;
     // Merge over defaults so a settings file from an older build still loads.
     // Bindings merge per action: a saved table from before an action existed
     // must not leave that action unbound.

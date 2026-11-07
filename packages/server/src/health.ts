@@ -1,4 +1,5 @@
 import { monitorEventLoopDelay } from 'node:perf_hooks';
+import { linkReport } from './net/linkStats.js';
 import { GAMEPLAY, PROTOCOL_VERSION } from '@gridlock/shared';
 import type { TickReport } from './rooms/tickStats.js';
 
@@ -94,6 +95,8 @@ export function healthReport(
     tickHz: GAMEPLAY.tickHz,
     keepingUp,
     load,
+    // How the connections themselves are doing, as anonymous aggregates.
+    links: linkReport(),
     matches,
   };
 }

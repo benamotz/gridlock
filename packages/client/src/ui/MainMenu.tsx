@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { DEFAULT_MATCH_CONFIG, type MatchConfig } from '@gridlock/shared';
 import { useStore } from '../store.js';
+import { touchEnabled } from '../game/touch/device.js';
 
 interface Props {
   onQuickPlay(): void;
@@ -15,7 +16,8 @@ interface Props {
 type Panel = 'main' | 'create' | 'join';
 
 export function MainMenu(props: Props): React.ReactElement {
-  const { maps, displayName, error, status, statusDetail } = useStore();
+  const { maps, displayName, error, status, statusDetail, settings } = useStore();
+  const touch = touchEnabled(settings.touchControls);
   const [panel, setPanel] = useState<Panel>('main');
   const [name, setName] = useState(displayName);
   const [code, setCode] = useState('');
@@ -260,22 +262,31 @@ export function MainMenu(props: Props): React.ReactElement {
         )}
 
         <div className="divider" />
-        <div className="controls-grid">
-          <div><span>Move</span> <span className="kbd">WASD</span></div>
-          <div><span>Aim / Fire</span> <span className="kbd">Mouse</span></div>
-          <div><span>Sprint</span> <span className="kbd">Shift</span></div>
-          <div><span>Reload</span> <span className="kbd">R</span></div>
-          <div><span>Enter / exit vehicle</span> <span className="kbd">E</span></div>
-          <div><span>Swap weapon</span> <span className="kbd">F</span></div>
-          <div><span>Weapon slots</span> <span className="kbd">1-4 / Wheel</span></div>
-          <div><span>Scoreboard</span> <span className="kbd">Tab</span></div>
-          <div><span>Jump (dodge bullets)</span> <span className="kbd">Space</span></div>
-          <div><span>Use medkit / armor</span> <span className="kbd">H / G</span></div>
-          <div><span>Barricade / sentry / mine</span> <span className="kbd">Q / T / X</span></div>
-          <div><span>Rotate barricade</span> <span className="kbd">Wheel</span></div>
-          <div><span>Expand map</span> <span className="kbd">M</span></div>
-          <div><span>Menu</span> <span className="kbd">Esc</span></div>
-        </div>
+        {touch ? (
+          <div className="controls-grid">
+            <div><span>Move (push fully to sprint)</span> <span className="kbd">Left thumb</span></div>
+            <div><span>Shoot nearest threat</span> <span className="kbd">Tap right</span></div>
+            <div><span>Aim by hand</span> <span className="kbd">Drag right</span></div>
+            <div><span>Base defences</span> <span className="kbd">Tap twice</span></div>
+          </div>
+        ) : (
+          <div className="controls-grid">
+            <div><span>Move</span> <span className="kbd">WASD</span></div>
+            <div><span>Aim / Fire</span> <span className="kbd">Mouse</span></div>
+            <div><span>Sprint</span> <span className="kbd">Shift</span></div>
+            <div><span>Reload</span> <span className="kbd">R</span></div>
+            <div><span>Enter / exit vehicle</span> <span className="kbd">E</span></div>
+            <div><span>Swap weapon</span> <span className="kbd">F</span></div>
+            <div><span>Weapon slots</span> <span className="kbd">1-4 / Wheel</span></div>
+            <div><span>Scoreboard</span> <span className="kbd">Tab</span></div>
+            <div><span>Jump (dodge bullets)</span> <span className="kbd">Space</span></div>
+            <div><span>Use medkit / armor</span> <span className="kbd">H / G</span></div>
+            <div><span>Barricade / sentry / mine</span> <span className="kbd">Q / T / X</span></div>
+            <div><span>Rotate barricade</span> <span className="kbd">Wheel</span></div>
+            <div><span>Expand map</span> <span className="kbd">M</span></div>
+            <div><span>Menu</span> <span className="kbd">Esc</span></div>
+          </div>
+        )}
       </div>
     </div>
   );

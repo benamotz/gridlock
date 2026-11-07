@@ -24,6 +24,8 @@ function hash2(x: number, y: number): number {
  */
 export class StaticLayer {
   private chunks = new Map<string, HTMLCanvasElement>();
+  /** Cached chunks kept before the oldest is dropped; lower on phones. */
+  maxChunks = MAX_CACHED_CHUNKS;
   private lru: string[] = [];
 
   private readonly roadsH: Rect[] = [];
@@ -63,13 +65,19 @@ export class StaticLayer {
     const y0 = Math.floor(view.y / CHUNK);
     const x1 = Math.floor((view.x + view.w) / CHUNK);
     const y1 = Math.floor((view.y + view.h) / CHUNK);
+    // Each chunk is drawn one screen pixel larger than its cell, so neighbours
+    // overlap. At a fractional zoom (phones zoom out, on high-density screens)
+    // chunk edges land between pixels and get antialiased, and the background
+    // showed through as a grid of thin lines sliding across the screen.
+    const scale = Math.abs(ctx.getTransform().a) || 1;
+    const size = CHUNK + 1 / scale;
 
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
         if (cx < 0 || cy < 0) continue;
         if (cx * CHUNK >= this.map.width || cy * CHUNK >= this.map.height) continue;
         const chunk = this.chunk(cx, cy);
-        ctx.drawImage(chunk, cx * CHUNK, cy * CHUNK);
+        ctx.drawImage(chunk, cx * CHUNK, cy * CHUNK, size, size);
       }
     }
   }
@@ -93,7 +101,7 @@ export class StaticLayer {
 
     this.chunks.set(key, canvas);
     this.lru.push(key);
-    while (this.lru.length > MAX_CACHED_CHUNKS) {
+    while (this.lru.length > this.maxChunks) {
       const evict = this.lru.shift();
       if (evict) this.chunks.delete(evict);
     }

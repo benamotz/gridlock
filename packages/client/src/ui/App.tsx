@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { MatchConfig, ServerMessage } from '@gridlock/shared';
 import { ClientSocket, type ConnectionStatus } from '../net/ClientSocket.js';
+import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../store.js';
 import type { GameClient } from '../game/GameClient.js';
 import { MainMenu } from './MainMenu.js';
@@ -16,8 +17,19 @@ import { SettingsPanel } from './Settings.js';
  * the menu, lobby, match and results screens as the room's phase changes.
  */
 export function App(): React.ReactElement {
-  const store = useStore();
-  const { screen, settingsOpen, results, config, roomCode } = store;
+  // Only what this component renders from. Subscribing to the whole store made
+  // the entire app re-render on every HUD update (15 a second) - a real cost
+  // on phones.
+  const { screen, settingsOpen, results, config, roomCode, showScoreboard } = useStore(
+    useShallow((s) => ({
+      screen: s.screen,
+      settingsOpen: s.settingsOpen,
+      results: s.results,
+      config: s.config,
+      roomCode: s.roomCode,
+      showScoreboard: s.showScoreboard,
+    })),
+  );
   const clientRef = useRef<GameClient | null>(null);
   const [matchKey, setMatchKey] = useState(0);
   const [activeMap, setActiveMap] = useState<string | null>(null);
@@ -111,11 +123,11 @@ export function App(): React.ReactElement {
 
   // The scoreboard is served on demand; refresh it while it is held open.
   useEffect(() => {
-    if (!store.showScoreboard || screen !== 'match') return undefined;
+    if (!showScoreboard || screen !== 'match') return undefined;
     socket.send({ t: 'scoreboard' });
     const id = window.setInterval(() => socket.send({ t: 'scoreboard' }), 1000);
     return () => window.clearInterval(id);
-  }, [store.showScoreboard, screen, socket]);
+  }, [showScoreboard, screen, socket]);
 
   const leaveToMenu = useCallback((): void => {
     socket.send({ t: 'leave_room' });

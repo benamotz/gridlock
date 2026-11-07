@@ -12,6 +12,7 @@ import { RateLimiter, ViolationCounter } from './rateLimit.js';
 import { filterChat, sanitizeName } from '../names.js';
 import type { RoomManager } from '../rooms/RoomManager.js';
 import type { Room } from '../rooms/Room.js';
+import { trackLink } from './linkStats.js';
 import type { Store } from '../persistence/index.js';
 
 const SERVER_FULL =
@@ -71,6 +72,8 @@ export interface ConnectionDeps {
  * directly - the connection layer holds no game state of its own.
  */
 export class Connection {
+  /** Stops the round-trip and backlog measurement for /api/health. */
+  private readonly untrackLink: () => void;
   private session: Session | null = null;
   private room: Room | null = null;
   private readonly limiter = new RateLimiter(GAMEPLAY.net.messageRateLimit);
@@ -85,6 +88,7 @@ export class Connection {
     ws.on('message', (data, isBinary) => this.onMessage(data, isBinary));
     ws.on('close', () => this.onClose());
     ws.on('error', () => this.onClose());
+    this.untrackLink = trackLink(this, ws);
   }
 
   get playerId(): string | null {
@@ -342,6 +346,7 @@ export class Connection {
   private onClose(): void {
     if (this.closed) return;
     this.closed = true;
+    this.untrackLink();
     // The slot is held open for the reconnect grace period, so the player can
     // come back into the same match without being duplicated.
     if (this.room && this.session) this.room.markDisconnected(this.session.playerId);

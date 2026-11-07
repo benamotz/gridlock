@@ -157,10 +157,10 @@ export function Lobby(props: Props): React.ReactElement {
             </div>
           </div>
 
-          <div className="col">
+          <div className="col lobby-side">
             <p className="section-title">Room code</p>
             <div className="roomcode">{roomCode ?? '-----'}</div>
-            <p className="hint">
+            <p className="hint lobby-long-hint">
               Share this code so friends can join with "Join by Code". Open a
               second browser tab to test with two clients.
             </p>
@@ -176,7 +176,7 @@ export function Lobby(props: Props): React.ReactElement {
 
             {isHost ? (
               <button
-                className="btn primary big wide"
+                className="btn primary big wide lobby-go"
                 disabled={phase !== 'lobby'}
                 onClick={props.onStart}
               >
@@ -184,13 +184,13 @@ export function Lobby(props: Props): React.ReactElement {
               </button>
             ) : (
               <button
-                className={`btn big wide${me?.ready ? ' primary' : ''}`}
+                className={`btn big wide lobby-go${me?.ready ? ' primary' : ''}`}
                 onClick={() => props.onReady(!me?.ready)}
               >
                 {me?.ready ? 'Ready' : 'Mark Ready'}
               </button>
             )}
-            <p className="hint">
+            <p className="hint lobby-long-hint">
               Empty slots are filled with bots when the match starts, so you can
               start with a single player.
             </p>

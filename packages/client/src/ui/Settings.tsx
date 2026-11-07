@@ -11,7 +11,7 @@ export function SettingsPanel({ onClose, onLeaveMatch }: Props): React.ReactElem
 
   const slider = (
     label: string,
-    key: 'masterVolume' | 'musicVolume' | 'effectsVolume' | 'sensitivity' | 'aimAssist',
+    key: 'masterVolume' | 'musicVolume' | 'effectsVolume' | 'sensitivity' | 'aimAssist' | 'touchAimAssist',
     max = 1,
   ): React.ReactElement => (
     <div className="settings-row" key={key}>
@@ -34,7 +34,7 @@ export function SettingsPanel({ onClose, onLeaveMatch }: Props): React.ReactElem
 
   const toggle = (
     label: string,
-    key: 'screenShake' | 'colorblind' | 'reduceFlashing' | 'showLatency' | 'storyText',
+    key: 'screenShake' | 'colorblind' | 'reduceFlashing' | 'showLatency' | 'storyText' | 'leftHanded' | 'haptics' | 'showPerf',
     hint?: string,
   ): React.ReactElement => (
     <div className="settings-row" key={key}>
@@ -47,6 +47,26 @@ export function SettingsPanel({ onClose, onLeaveMatch }: Props): React.ReactElem
         checked={settings[key]}
         onChange={(e) => updateSettings({ [key]: e.target.checked })}
       />
+    </div>
+  );
+
+  const choice = <K extends 'touchControls' | 'touchFire' | 'touchDrive' | 'touchButtonSize'>(
+    label: string,
+    key: K,
+    options: [string, string][],
+    hint?: string,
+  ): React.ReactElement => (
+    <div className="settings-row" key={key}>
+      <span>
+        {label}
+        {hint && <div className="hint">{hint}</div>}
+      </span>
+      <select
+        value={settings[key]}
+        onChange={(e) => updateSettings({ [key]: e.target.value } as Partial<typeof settings>)}
+      >
+        {options.map(([value, text]) => <option key={value} value={value}>{text}</option>)}
+      </select>
     </div>
   );
 
@@ -79,6 +99,26 @@ export function SettingsPanel({ onClose, onLeaveMatch }: Props): React.ReactElem
           Key rebinding is wired through the input layer's binding table and is
           exposed in a later milestone; the defaults are listed on the main menu.
         </p>
+
+        <div className="divider" />
+        <p className="section-title">Touch</p>
+        <div className="settings-list">
+          {choice('Touch controls', 'touchControls', [
+            ['auto', 'Auto'], ['on', 'On'], ['off', 'Off'],
+          ], 'Auto shows them on phones and tablets only.')}
+          {choice('Right thumb', 'touchFire', [
+            ['stick', 'Fire stick'], ['button', 'Fire button'],
+          ], 'Fire stick: tap to shoot the marked target, hold to keep firing, drag to aim.')}
+          {choice('Driving', 'touchDrive', [
+            ['screen', 'Point where to go'], ['car', 'Steer like a car'],
+          ])}
+          {choice('Button size', 'touchButtonSize', [
+            ['S', 'Small'], ['M', 'Medium'], ['L', 'Large'],
+          ])}
+          {slider('Touch aim assist', 'touchAimAssist')}
+          {toggle('Left-handed layout', 'leftHanded', 'Move with the right thumb, shoot with the left.')}
+          {toggle('Vibration', 'haptics', 'Short buzzes on hits and button presses (Android).')}
+        </div>
 
         <div className="divider" />
         <p className="section-title">Accessibility</p>
@@ -114,6 +154,7 @@ export function SettingsPanel({ onClose, onLeaveMatch }: Props): React.ReactElem
               <option value="high">High</option>
             </select>
           </div>
+          {toggle('Show performance', 'showPerf', 'Frame rate and timing in a corner, for checking how a device copes.')}
           <div className="settings-row">
             <span>Fullscreen</span>
             <button

@@ -180,3 +180,23 @@ export function drawJob(
   }
   ctx.restore();
 }
+
+/**
+ * Touch: who a tap on the fire stick would hit - corner brackets that tighten
+ * a little, so the choice is visible before the trigger is touched.
+ */
+export function drawTargetMarker(ctx: CanvasRenderingContext2D, x: number, y: number, time: number): void {
+  const r = 24 + 3 * Math.sin(time / 200);
+  const arm = 9;
+  ctx.save();
+  ctx.strokeStyle = '#ffd23f';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  for (const [sx, sy] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) {
+    ctx.moveTo(x + sx * r, y + sy * (r - arm));
+    ctx.lineTo(x + sx * r, y + sy * r);
+    ctx.lineTo(x + sx * (r - arm), y + sy * r);
+  }
+  ctx.stroke();
+  ctx.restore();
+}

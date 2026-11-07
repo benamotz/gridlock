@@ -5,6 +5,8 @@ import { teamColorFor } from '../render/assets.js';
 import { WeaponIcon } from './WeaponIcon.js';
 import { VehicleCard } from './VehicleCard.js';
 import { CashCounter } from './CashCounter.js';
+import { touchEnabled } from '../game/touch/device.js';
+import { contextFromPrompt } from '../game/touch/gestures.js';
 
 /** Keys shown on the defence chips; these mirror the default bindings. */
 const DEFENCE_KEYS: Record<string, string> = { barricade: 'Q', turret: 'T', mine: 'X' };
@@ -89,6 +91,8 @@ export function HUD({ mapExpanded, connectionWarning }: Props): React.ReactEleme
   const showCrime = freeRoam && hud.lastCrime !== null && crimeAge < CRIME_MS;
   const showNotice = freeRoam && hud.notice !== null && performance.now() - hud.notice.at < NOTICE_MS;
   const story = settings.storyText;
+  // On touch the call panel, weapon slots and key hints are the touch HUD's.
+  const touch = touchEnabled(settings.touchControls);
   const showContact = freeRoam && story && hud.contactLine !== null &&
     performance.now() - hud.contactLine.at < CONTACT_MS;
 
@@ -134,7 +138,7 @@ export function HUD({ mapExpanded, connectionWarning }: Props): React.ReactEleme
           </div>
         </div>
       )}
-      {freeRoam && hud.phoneOffer && !dead && (
+      {freeRoam && hud.phoneOffer && !dead && !touch && (
         <div className={`hud-phone kind-${hud.phoneOffer.kind}`}>
           <div className="hud-phone-head">
             <span className="hud-phone-icon">☎</span>{' '}
@@ -360,11 +364,11 @@ export function HUD({ mapExpanded, connectionWarning }: Props): React.ReactEleme
           <div className="placing-title">
             PLACING {deployableDef(hud.placing.kind).name.toUpperCase()}
           </div>
-          <div className="placing-help">
+          {!touch && <div className="placing-help">
             {deployableDef(hud.placing.kind).rotatable && <span><b>Wheel</b> rotate</span>}
             <span><b>Click</b> or <b>{DEFENCE_KEYS[hud.placing.kind]}</b> place</span>
             <span><b>Right-click</b> / <b>Esc</b> cancel</span>
-          </div>
+          </div>}
           {!hud.placing.valid && hud.placing.reason && (
             <div className="placing-reason">{hud.placing.reason}</div>
           )}
@@ -388,7 +392,11 @@ export function HUD({ mapExpanded, connectionWarning }: Props): React.ReactEleme
         <VehicleCard type={hud.nearbyVehicle} aboard={hud.inVehicle} />
       )}
 
-      {hud.prompt && !dead && !hud.placing && <div className="hud-prompt">{hud.prompt}</div>}
+      {/* On touch an actionable prompt is the context button's label instead. */}
+      {hud.prompt && !dead && !hud.placing &&
+        !(touch && contextFromPrompt(hud.prompt, hud.inVehicle)) && (
+        <div className="hud-prompt">{hud.prompt}</div>
+      )}
 
       {dead && (
         <div className="hud-center-message">

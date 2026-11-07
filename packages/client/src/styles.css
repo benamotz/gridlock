@@ -732,3 +732,274 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .hud-greeting { animation: greeting-fade 5s ease-in forwards; }
 @keyframes greeting-fade { 0%, 75% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .hud-greeting { animation: none; } }
+
+/* =========================================================================
+   Touch (phones and tablets). Everything here is scoped to .touch-ui, which
+   is only set when touch controls are on, so desktop styling is untouched.
+   ========================================================================= */
+.touch-ui {
+  --safe-l: env(safe-area-inset-left, 0px);
+  --safe-r: env(safe-area-inset-right, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --btn: 62px;
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  overscroll-behavior: none;
+}
+.touch-ui.btn-S { --btn: 52px; }
+.touch-ui.btn-L { --btn: 74px; }
+.touch-ui canvas.world { cursor: default; }
+
+/* Thumb zones and sticks, drawn by TouchInput. */
+.touch-host { position: absolute; inset: 0; pointer-events: none; }
+.touch-layer { position: absolute; inset: 0; pointer-events: none; touch-action: none; }
+.touch-zone { position: absolute; top: 24%; bottom: 0; width: 50%; pointer-events: auto; touch-action: none; }
+.touch-zone.move { left: 0; }
+.touch-zone.fire { right: 0; }
+.touch-layer.left-handed .touch-zone.move { left: auto; right: 0; }
+.touch-layer.left-handed .touch-zone.fire { right: auto; left: 0; }
+.touch-layer.fire-button .touch-zone.fire { display: none; }
+/* Where each thumb usually rests: a faint ring, until it is touched. */
+.touch-zone::after {
+  content: ''; position: absolute; bottom: 14%; width: 104px; height: 104px;
+  border-radius: 50%; border: 2px dashed rgba(255, 255, 255, 0.13);
+}
+.touch-zone.move::after { left: 12%; }
+.touch-zone.fire::after { right: 12%; border-color: rgba(255, 90, 100, 0.18); }
+.touch-layer.left-handed .touch-zone.move::after { left: auto; right: 12%; }
+.touch-layer.left-handed .touch-zone.fire::after { right: auto; left: 12%; }
+.touch-stick-base {
+  position: absolute; left: 0; top: 0; pointer-events: none;
+  width: calc(var(--stick-radius) * 2); height: calc(var(--stick-radius) * 2);
+  border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.28);
+  background: rgba(10, 13, 20, 0.28); opacity: 0;
+}
+.touch-stick-base.active { opacity: 1; }
+.touch-stick-knob {
+  position: absolute; width: 50px; height: 50px; border-radius: 50%;
+  left: calc(var(--stick-radius) - 25px); top: calc(var(--stick-radius) - 25px);
+  background: rgba(255, 255, 255, 0.38);
+}
+.touch-stick-base.fire .touch-stick-knob { background: rgba(255, 70, 85, 0.6); }
+
+/* On-screen buttons. */
+.touch-hud { position: absolute; inset: 0; pointer-events: none; font-family: var(--mono); }
+.touch-hud button { pointer-events: auto; touch-action: none; font-family: inherit; -webkit-tap-highlight-color: transparent; }
+.touch-btn {
+  width: var(--btn); height: var(--btn); border-radius: 50%;
+  background: rgba(10, 13, 20, 0.6); border: 2px solid rgba(255, 255, 255, 0.26);
+  color: #eef2f8; font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  display: flex; align-items: center; justify-content: center; flex-direction: column;
+}
+.touch-btn.pressed { background: rgba(255, 255, 255, 0.26); transform: scale(0.94); }
+.touch-btn.small { width: calc(var(--btn) * 0.72); height: calc(var(--btn) * 0.72); font-size: 10px; }
+.touch-btn.small i { font-style: normal; font-size: 12px; color: #7ef3a4; }
+.touch-btn.empty { opacity: 0.45; }
+.touch-actions { position: absolute; inset: 0; pointer-events: none; }
+/* The right-hand buttons must stay below the icon row under the minimap (it
+   ends ~165px from the top): on a 360px-tall phone they used to overlap it, and
+   the context button sat on top of the full-screen button. Each is capped
+   with min() so larger button sizes push down rather than up. */
+.touch-btn.jump {
+  position: absolute; right: calc(16px + var(--safe-r));
+  bottom: min(calc(var(--btn) * 2.1), calc(100% - 172px - var(--btn)));
+}
+.touch-btn.reload {
+  position: absolute; right: calc(20px + var(--btn) * 1.15 + var(--safe-r));
+  bottom: min(calc(var(--btn) * 1.5), calc(100% - 172px - var(--btn) * 1.6));
+}
+.touch-btn.fire {
+  position: absolute; right: calc(24px + var(--safe-r)); bottom: calc(18px + var(--safe-b));
+  width: calc(var(--btn) * 1.5); height: calc(var(--btn) * 1.5);
+  background: rgba(255, 59, 78, 0.45); border-color: rgba(255, 120, 130, 0.6); font-size: 13px;
+}
+.touch-btn.context {
+  position: absolute; right: calc(28px + var(--btn) * 2.3 + var(--safe-r));
+  bottom: min(calc(var(--btn) * 2), calc(100% - 172px - var(--btn) * 0.78));
+  width: auto; height: calc(var(--btn) * 0.78); max-width: 46vw; padding: 0 16px;
+  border-radius: 999px; border-color: var(--accent); color: var(--accent);
+  font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
+  line-height: calc(var(--btn) * 0.78 - 4px);
+}
+.touch-ui.left-handed .touch-btn.jump { right: auto; left: calc(16px + var(--safe-l)); }
+.touch-ui.left-handed .touch-btn.reload { right: auto; left: calc(20px + var(--btn) * 1.15 + var(--safe-l)); }
+.touch-ui.left-handed .touch-btn.fire { right: auto; left: calc(24px + var(--safe-l)); }
+.touch-ui.left-handed .touch-btn.context { right: auto; left: calc(28px + var(--btn) * 2.3 + var(--safe-l)); }
+
+.touch-pouch { position: absolute; left: calc(10px + var(--safe-l)); top: calc(118px + var(--safe-t)); display: flex; gap: 8px; }
+.touch-slots {
+  position: absolute; left: calc(10px + var(--safe-l)); top: calc(78px + var(--safe-t));
+  display: flex; gap: 5px; max-width: 46vw; flex-wrap: wrap;
+}
+.touch-slot {
+  background: rgba(10, 13, 20, 0.7); border: 1px solid var(--line); border-radius: 6px;
+  color: var(--muted); font-size: 10px; padding: 6px 8px; min-height: 30px;
+}
+.touch-slot.active { color: #10131a; background: var(--accent); border-color: var(--accent); }
+.touch-ui.left-handed .touch-pouch,
+.touch-ui.left-handed .touch-slots { left: auto; right: calc(10px + var(--safe-r)); }
+
+.touch-top-icons {
+  position: absolute; right: calc(8px + var(--safe-r)); top: calc(132px + var(--safe-t));
+  display: flex; gap: 5px;
+}
+.touch-icon {
+  background: rgba(10, 13, 20, 0.75); border: 1px solid var(--line); border-radius: 6px;
+  color: #eef2f8; font-size: 11px; padding: 6px 9px; min-width: 36px; min-height: 30px;
+}
+
+/* Base defences (team matches): a row of chips bottom-centre, between the
+   thumbs, shown only inside your own base. A first tap opens placement, a
+   second tap on the same chip places it. */
+.touch-defences {
+  position: absolute; left: 50%; bottom: calc(8px + var(--safe-b)); transform: translateX(-50%);
+  display: flex; gap: 6px;
+}
+.touch-defence {
+  background: rgba(10, 13, 20, 0.8); border: 1px solid var(--line); border-radius: 8px;
+  color: var(--muted); font-size: 11px; font-weight: 700; padding: 6px 10px; min-height: 40px;
+  display: flex; align-items: center; gap: 6px;
+}
+.touch-defence i { font-style: normal; font-size: 10px; opacity: 0.8; }
+.touch-defence.ready { border-color: var(--accent); color: #eef2f8; }
+.touch-defence.selected { border-color: var(--good); background: rgba(20, 50, 34, 0.9); color: #eef2f8; }
+
+/* Placement mode: Place / Turn / cancel take the action buttons' spots. */
+.touch-btn.place {
+  position: absolute; right: calc(16px + var(--safe-r));
+  bottom: min(calc(var(--btn) * 2.1), calc(100% - 172px - var(--btn)));
+  border-color: var(--good); background: rgba(20, 80, 50, 0.7); font-size: 12px;
+}
+.touch-btn.place.invalid { border-color: var(--danger); background: rgba(80, 20, 28, 0.6); }
+.touch-btn.rotate {
+  position: absolute; right: calc(20px + var(--btn) * 1.15 + var(--safe-r));
+  bottom: min(calc(var(--btn) * 1.5), calc(100% - 172px - var(--btn) * 1.6));
+}
+.touch-btn.cancel {
+  position: absolute; right: calc(24px + var(--btn) * 2.3 + var(--safe-r));
+  bottom: min(calc(var(--btn) * 2), calc(100% - 172px - var(--btn) * 0.72));
+  width: calc(var(--btn) * 0.72); height: calc(var(--btn) * 0.72); font-size: 14px;
+}
+.touch-ui.left-handed .touch-btn.place { right: auto; left: calc(16px + var(--safe-l)); }
+.touch-ui.left-handed .touch-btn.rotate { right: auto; left: calc(20px + var(--btn) * 1.15 + var(--safe-l)); }
+.touch-ui.left-handed .touch-btn.cancel { right: auto; left: calc(24px + var(--btn) * 2.3 + var(--safe-l)); }
+.touch-placing-hint {
+  position: absolute; left: 50%; bottom: calc(56px + var(--safe-b)); transform: translateX(-50%);
+  font-size: 10px; color: var(--muted); background: rgba(10, 13, 20, 0.6);
+  padding: 2px 8px; border-radius: 4px; white-space: nowrap;
+}
+.touch-ui .hud-placing { top: calc(84px + var(--safe-t)); padding: 4px 12px; }
+
+/* Short screens (a phone held sideways is ~360-430px tall): menus, lobby
+   and results tighten up, and the lobby keeps its two columns with the
+   Ready / Start column pinned so it never scrolls out of reach. */
+@media (max-height: 520px) {
+  .centered { padding: 8px calc(10px + env(safe-area-inset-right)) 8px calc(10px + env(safe-area-inset-left)); place-items: start center; }
+  .card { padding: 14px 16px; border-radius: 8px; }
+  .brand { font-size: 28px; }
+  .tagline { margin-bottom: 10px; font-size: 11px; }
+  .btn.big { padding: 11px 14px; font-size: 14px; }
+  .divider { margin: 10px 0; }
+  .menu-grid { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 8px; }
+  .lobby-grid { grid-template-columns: 1fr minmax(180px, 230px); gap: 12px; }
+  .lobby-grid > :last-child { position: sticky; top: 0; align-self: start; }
+  .lobby-side { gap: 8px; }
+  .lobby-side .lobby-go { order: -1; }
+  .lobby-side .lobby-long-hint { display: none; }
+  .roomcode { font-size: 24px; }
+  .result-banner { margin-bottom: 10px; }
+  .result-banner .headline { font-size: 28px; }
+  .settings-row { font-size: 12px; }
+  .map-picker { grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); }
+}
+
+/* Incoming call, with large answer buttons. */
+.touch-phone {
+  position: absolute; left: 50%; top: calc(104px + var(--safe-t)); transform: translateX(-50%);
+  width: min(340px, 60vw); background: rgba(10, 13, 20, 0.9); border: 1px solid var(--line);
+  border-left: 3px solid #1dd1a1; border-radius: 8px; padding: 6px 10px; pointer-events: none;
+}
+.touch-phone.kind-hit, .touch-phone.kind-bounty, .touch-phone.kind-hideout { border-left-color: #ff3b4e; }
+.touch-phone-head { font-size: 10px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+.touch-phone-text { font-size: 12px; font-weight: 700; color: #eef2f8; margin: 3px 0 6px; }
+.touch-phone-buttons { display: flex; gap: 8px; }
+.touch-phone-buttons button {
+  flex: 1; min-height: 38px; border-radius: 6px; font-size: 13px; font-weight: 800; border: 0;
+}
+.touch-phone-buttons .take { background: #1dd1a1; color: #06231a; }
+.touch-phone-buttons .pass { background: rgba(255, 255, 255, 0.14); color: #eef2f8; }
+
+/* First tap: unlocks sound, full screen and (Android) the landscape lock. */
+.touch-start {
+  position: absolute; inset: 0; z-index: 40; border: 0; color: #eef2f8;
+  background: rgba(5, 6, 10, 0.82); display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px;
+}
+.touch-start .big { font-size: 26px; font-weight: 800; letter-spacing: 0.1em; }
+.touch-start .sub { font-size: 12px; color: var(--muted); }
+
+/* Portrait: ask for landscape instead of a squashed game. */
+.touch-rotate {
+  display: none; position: absolute; inset: 0; z-index: 50; pointer-events: auto;
+  background: #05060a; color: #eef2f8; font-size: 15px; font-weight: 700;
+  flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;
+}
+.touch-rotate-icon { font-size: 44px; color: var(--accent); }
+@media (orientation: portrait) {
+  .touch-ui .touch-rotate { display: flex; }
+}
+
+/* The HUD, rearranged around the thumbs: vitals, weapon and pouch top-left;
+   stars, cash and jobs top-centre; map and buttons top-right; bottom clear. */
+.touch-ui .hud-bottomleft {
+  left: calc(10px + var(--safe-l)); top: calc(8px + var(--safe-t)); bottom: auto; width: 168px;
+}
+.touch-ui .hud-bottomleft .hud-bar { height: 10px; margin-bottom: 3px; }
+.touch-ui .hud-bottomleft .hud-vitals-labels { font-size: 9px; }
+.touch-ui .hud-bottomright {
+  left: calc(186px + var(--safe-l)); right: auto; top: calc(8px + var(--safe-t)); bottom: auto; text-align: left;
+}
+.touch-ui .hud-weapon { font-size: 11px; }
+.touch-ui .hud-ammo { font-size: 20px; }
+.touch-ui .hud-ammo .reserve { font-size: 11px; }
+.touch-ui .hud-slots, .touch-ui .hud-pouch, .touch-ui .hud-defences, .touch-ui .hud-jump,
+.touch-ui .hud-phone-keys, .touch-ui .vehicle-card, .touch-ui .hud-team-legend { display: none; }
+.touch-ui .hud-status { left: auto; right: calc(132px + var(--safe-r)); top: calc(8px + var(--safe-t)); align-items: flex-end; }
+.touch-ui .minimap-wrap { right: calc(8px + var(--safe-r)); top: calc(8px + var(--safe-t)); }
+.touch-ui .minimap-wrap.expanded { right: 50%; top: 50%; transform: translate(50%, -50%); z-index: 30; }
+/* The kill feed moves off the right thumb's side, under the pouch buttons. */
+.touch-ui .killfeed {
+  top: calc(170px + var(--safe-t)); right: auto; left: calc(10px + var(--safe-l));
+  align-items: flex-start; font-size: 10px; max-width: 30vw;
+}
+/* Only the newest three kills on a phone; six rows covered the left thumb's view. */
+.touch-ui .killfeed .kill-line:nth-last-child(n+4) { display: none; }
+.touch-ui.left-handed .killfeed { left: auto; right: calc(10px + var(--safe-r)); align-items: flex-end; }
+.touch-ui .hud-wanted { top: calc(6px + var(--safe-t)); font-size: 17px; padding: 2px 8px; }
+.touch-ui .hud-cash { top: calc(6px + var(--safe-t)); font-size: 14px; padding: 3px 8px; left: calc(50% + 70px); }
+.touch-ui .hud-location { top: calc(38px + var(--safe-t)); font-size: 10px; }
+.touch-ui .hud-job { top: calc(56px + var(--safe-t)); padding: 3px 10px; }
+.touch-ui .hud-job-title { font-size: 11px; }
+.touch-ui .hud-job-meta, .touch-ui .hud-job-contact { font-size: 9px; }
+.touch-ui .hud-notice { top: calc(150px + var(--safe-t)); font-size: 11px; }
+.touch-ui .hud-contact-line { top: calc(180px + var(--safe-t)); font-size: 11px; max-width: 56vw; }
+.touch-ui .hud-crime { top: calc(124px + var(--safe-t)); }
+.touch-ui .hud-prompt { bottom: auto; top: calc(124px + var(--safe-t)); font-size: 12px; padding: 5px 12px; }
+.touch-ui .hud-holdup { bottom: auto; top: 40%; }
+.touch-ui .hud-collect-toast { right: auto; left: 50%; bottom: auto; top: calc(124px + var(--safe-t)); transform: translateX(-50%); }
+.touch-ui .hud-center-message .big { font-size: 30px; }
+.touch-ui .hud-team-banner { top: calc(88px + var(--safe-t)); }
+
+/* Touch scoreboard: one tap anywhere closes it. */
+.scoreboard-tap { flex-direction: column; touch-action: none; }
+.scoreboard-close-hint { text-align: center; margin-top: 10px; }
+
+/* Performance readout (Settings > Show performance, or ?perf in the address). */
+.perf-overlay {
+  position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); z-index: 60;
+  white-space: pre; pointer-events: none; font: 10px/1.35 var(--mono); color: #b8ffcf;
+  background: rgba(0, 0, 0, 0.7); border-radius: 4px; padding: 3px 7px;
+}

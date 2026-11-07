@@ -8,9 +8,14 @@ interface Props {
   teamScores: number[];
   /** Rendered inside the results screen without the overlay chrome. */
   inline?: boolean;
+  /**
+   * Touch: the overlay covers the button that opened it, so a tap anywhere on
+   * it closes it (desktop holds Tab instead and never needs this).
+   */
+  onClose?(): void;
 }
 
-export function Scoreboard({ entries, teamScores, inline }: Props): React.ReactElement {
+export function Scoreboard({ entries, teamScores, inline, onClose }: Props): React.ReactElement {
   const { playerId, settings, config } = useStore();
 
   // Free roam is one free-for-all list (every entry is NO_TEAM, no header),
@@ -80,5 +85,13 @@ export function Scoreboard({ entries, teamScores, inline }: Props): React.ReactE
   );
 
   if (inline) return body;
+  if (onClose) {
+    return (
+      <div className="overlay scoreboard-tap" onPointerDown={(e) => { e.preventDefault(); onClose(); }}>
+        {body}
+        <p className="hint scoreboard-close-hint">Tap anywhere to close</p>
+      </div>
+    );
+  }
   return <div className="overlay">{body}</div>;
 }
