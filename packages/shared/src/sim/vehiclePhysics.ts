@@ -180,9 +180,8 @@ export function stepVehicle(
   let controls: DriveControls;
   if (axes && Math.hypot(axes.x, axes.y) > DRIVE_DEADZONE) {
     // Nose against a building: the only case where pointing elsewhere backs up.
-    const probe = vehicleBodyCircles(def);
     const blockedAhead = Math.abs(along) < 40 &&
-      bodyBlocked(grid, probe, v.x + fx * 14, v.y + fy * 14, v.rot);
+      bodyBlocked(grid, vehicleBodyCircles(def), v.x + fx * 14, v.y + fy * 14, v.rot);
     controls = steerTowards(v.rot, along, def, axes.x, axes.y, blockedAhead, player);
   } else {
     const forward = (buttons & Btn.Up) !== 0;
@@ -285,7 +284,7 @@ export function stepVehicle(
   return { impact };
 }
 
-type Body = { radius: number; offsets: number[] };
+type Body = { radius: number; offsets: readonly number[] };
 
 /** True when any circle of the body overlaps geometry at this pose. */
 function bodyBlocked(grid: CollisionGrid, body: Body, x: number, y: number, rot: number): boolean {

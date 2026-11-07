@@ -24,88 +24,102 @@ export interface MinimapState {
 /**
  * Minimap renderer.
  *
- * The compact form shows a window around the player; the expanded form (M)
- * fits the whole map. Ground geometry is cached to an offscreen canvas the
- * first time a map is seen, because redrawing hundreds of rectangles every
- * frame for the city map is pure waste.
+ * The compact form shows a window around the player; the expanded form (M, or
+ * a tap on a phone) fits the whole map. Everything is drawn at the screen's
+ * full pixel density: the canvas is sized in device pixels and this works in
+ * CSS pixels through a transform.
+ *
+ * The ground is drawn as vectors, not scaled from a pre-rendered image: on a
+ * phone the old 2048-pixel image of the whole region was stretched 1.6x in the
+ * compact window and looked blurry. The compact window draws only the few
+ * dozen shapes in view each frame; the expanded map is drawn once per size
+ * into a cache and reused, since it never moves.
  */
 export class Minimap {
-  private cache = new Map<string, HTMLCanvasElement>();
+  private expandedCache: { key: string; canvas: HTMLCanvasElement } | null = null;
 
-  private baseLayer(map: GameMapDef): HTMLCanvasElement {
-    const existing = this.cache.get(map.id);
-    if (existing) return existing;
-
-    // Sharp enough that the compact window (a ~1500-unit slice) stays legible
-    // on the big region map, where 512 px across would be 32 units a pixel.
-    const scale = Math.min(0.25, 2048 / Math.max(map.width, map.height));
-    const c = document.createElement('canvas');
-    c.width = Math.ceil(map.width * scale);
-    c.height = Math.ceil(map.height * scale);
-    const ctx = c.getContext('2d')!;
-
+  /** Ground (zones and buildings) for the world rect in view, at `scale`. */
+  private drawGround(
+    ctx: CanvasRenderingContext2D, map: GameMapDef,
+    cx: number, cy: number, scale: number,
+    view: { x0: number; y0: number; x1: number; y1: number },
+  ): void {
+    const visible = (r: { x: number; y: number; w: number; h: number }): boolean =>
+      r.x < view.x1 && r.x + r.w > view.x0 && r.y < view.y1 && r.y + r.h > view.y0;
     ctx.fillStyle = '#0d0f14';
-    ctx.fillRect(0, 0, c.width, c.height);
-    ctx.save();
-    ctx.scale(scale, scale);
+    ctx.fillRect(cx + view.x0 * scale, cy + view.y0 * scale, (view.x1 - view.x0) * scale, (view.y1 - view.y0) * scale);
     for (const z of map.zones) {
+      if (!visible(z.rect)) continue;
       ctx.fillStyle = ZONE_STYLES[z.kind].fill;
-      ctx.fillRect(z.rect.x, z.rect.y, z.rect.w, z.rect.h);
+      ctx.fillRect(cx + z.rect.x * scale, cy + z.rect.y * scale, z.rect.w * scale, z.rect.h * scale);
     }
     ctx.fillStyle = '#0b0d12';
-    for (const s of map.solids) {
-      if (s.kind === 'prop') continue;
-      ctx.fillRect(s.rect.x, s.rect.y, s.rect.w, s.rect.h);
+    for (const so of map.solids) {
+      if (so.kind === 'prop' || !visible(so.rect)) continue;
+      ctx.fillRect(cx + so.rect.x * scale, cy + so.rect.y * scale, so.rect.w * scale, so.rect.h * scale);
     }
-    ctx.restore();
-
-    this.cache.set(map.id, c);
-    return c;
+    // A hairline edge on buildings keeps blocks readable at small scales.
+    if (scale > 0.05) {
+      ctx.strokeStyle = 'rgba(120, 132, 160, 0.22)';
+      ctx.lineWidth = 0.75;
+      for (const so of map.solids) {
+        if (so.kind !== 'building' || !visible(so.rect)) continue;
+        ctx.strokeRect(cx + so.rect.x * scale, cy + so.rect.y * scale, so.rect.w * scale, so.rect.h * scale);
+      }
+    }
   }
 
   draw(canvas: HTMLCanvasElement, s: MinimapState): void {
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-    const w = canvas.width;
-    const h = canvas.height;
-    const base = this.baseLayer(s.map);
+    // Work in CSS pixels; the canvas itself is sized in device pixels.
+    const dpr = canvas.clientWidth > 0 ? canvas.width / canvas.clientWidth : 1;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const w = canvas.width / dpr;
+    const h = canvas.height / dpr;
 
     ctx.clearRect(0, 0, w, h);
     ctx.save();
 
-    // World units visible in the minimap window.
-    const span = s.expanded ? Math.max(s.map.width, s.map.height) : 1500;
-    const scale = Math.min(w, h) / span;
-    const ox = w / 2 - s.selfX * scale;
-    const oy = h / 2 - s.selfY * scale;
-    const cx = s.expanded ? w / 2 - (s.map.width * scale) / 2 : ox;
-    const cy = s.expanded ? h / 2 - (s.map.height * scale) / 2 : oy;
+    // Compact: a fixed window of world around the player. Expanded: the whole
+    // map, fitted to the canvas whatever its shape.
+    const scale = s.expanded
+      ? Math.min(w / s.map.width, h / s.map.height)
+      : Math.min(w, h) / 1500;
+    const cx = s.expanded ? w / 2 - (s.map.width * scale) / 2 : w / 2 - s.selfX * scale;
+    const cy = s.expanded ? h / 2 - (s.map.height * scale) / 2 : h / 2 - s.selfY * scale;
 
     ctx.beginPath();
     ctx.rect(0, 0, w, h);
     ctx.clip();
 
-    // Copy only the visible part of the cached map. Downscaling the whole image
-    // (2048 px wide on the big region) every frame was wasted work, and on a
-    // phone a noticeable share of each frame.
-    const bs = base.width / s.map.width;
-    const wx0 = Math.max(0, -cx / scale);
-    const wy0 = Math.max(0, -cy / scale);
-    const wx1 = Math.min(s.map.width, (w - cx) / scale);
-    const wy1 = Math.min(s.map.height, (h - cy) / scale);
-    if (wx1 > wx0 && wy1 > wy0) {
-      ctx.drawImage(
-        base,
-        wx0 * bs, wy0 * bs, (wx1 - wx0) * bs, (wy1 - wy0) * bs,
-        cx + wx0 * scale, cy + wy0 * scale, (wx1 - wx0) * scale, (wy1 - wy0) * scale,
-      );
+    if (s.expanded) {
+      const key = `${s.map.id}:${canvas.width}x${canvas.height}`;
+      if (this.expandedCache?.key !== key) {
+        const c = document.createElement('canvas');
+        c.width = canvas.width;
+        c.height = canvas.height;
+        const g = c.getContext('2d')!;
+        g.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.drawGround(g, s.map, cx, cy, scale, { x0: 0, y0: 0, x1: s.map.width, y1: s.map.height });
+        this.expandedCache = { key, canvas: c };
+      }
+      ctx.save();
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.drawImage(this.expandedCache.canvas, 0, 0);
+      ctx.restore();
+    } else {
+      this.drawGround(ctx, s.map, cx, cy, scale, {
+        x0: Math.max(0, -cx / scale), y0: Math.max(0, -cy / scale),
+        x1: Math.min(s.map.width, (w - cx) / scale), y1: Math.min(s.map.height, (h - cy) / scale),
+      });
     }
 
     const wx = (x: number) => cx + x * scale;
     const wy = (y: number) => cy + y * scale;
 
     if (s.expanded) {
-      ctx.font = '11px system-ui, sans-serif';
+      ctx.font = '600 12px system-ui, sans-serif';
       ctx.fillStyle = 'rgba(230,236,245,0.6)';
       ctx.textAlign = 'center';
       for (const z of s.map.zones) {

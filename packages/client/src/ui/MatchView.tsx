@@ -37,6 +37,13 @@ export function MatchView(props: Props): React.ReactElement {
   const lastSnapshotAt = useRef(Date.now());
   const [mapExpanded, setMapExpanded] = useState(false);
   const [stalled, setStalled] = useState(false);
+  // The big map is sized to the window, and redrawn sharp when it changes.
+  const [viewport, setViewport] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
+  useEffect(() => {
+    const onResize = (): void => setViewport({ w: window.innerWidth, h: window.innerHeight });
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
   const {
     settings, settingsOpen, showScoreboard, showCrew, scoreboard, teamScores, status, set, pushKills,
   } = useStore(useShallow((s) => ({
@@ -109,7 +116,14 @@ export function MatchView(props: Props): React.ReactElement {
   const touch = touchEnabled(settings.touchControls);
   // On a phone the map stays a corner widget and opens as an overlay that never
   // fills the screen.
-  const minimapSize = touch ? (mapExpanded ? 340 : 116) : mapExpanded ? 620 : 190;
+  // Corner map, or the big map: on a phone nearly the whole screen, on a
+  // desktop a large panel. Sized in CSS pixels; the canvas gets device pixels.
+  const mapCss = mapExpanded
+    ? touch
+      ? { w: viewport.w - 24, h: viewport.h - 24 }
+      : { w: Math.min(980, viewport.w - 120), h: Math.min(720, viewport.h - 120) }
+    : touch ? { w: 140, h: 140 } : { w: 190, h: 190 };
+  const dpr = Math.min(3, window.devicePixelRatio || 1);
   const rootClass = [
     'match-root',
     touch ? 'touch-ui' : '',
@@ -123,7 +137,12 @@ export function MatchView(props: Props): React.ReactElement {
       <div className="touch-host" ref={touchRef} />
 
       <div className={`minimap-wrap${mapExpanded ? ' expanded' : ''}`}>
-        <canvas ref={minimapRef} width={minimapSize} height={minimapSize} />
+        <canvas
+          ref={minimapRef}
+          width={Math.round(mapCss.w * dpr)}
+          height={Math.round(mapCss.h * dpr)}
+          style={{ width: mapCss.w, height: mapCss.h }}
+        />
       </div>
 
       <HUD

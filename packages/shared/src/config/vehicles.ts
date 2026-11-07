@@ -155,13 +155,25 @@ export function vehicleRatings(def: VehicleDef): {
  * A row of circles keeps the collision within a few units of the drawn shape
  * while staying compatible with the circle-based collision grid.
  */
-export function vehicleBodyCircles(def: VehicleDef): { radius: number; offsets: number[] } {
+/**
+ * Cached per vehicle type: this runs for every vehicle on every tick, and
+ * rebuilding it each time was the server's single largest cost in a profile
+ * of the city (~9% of CPU). Callers treat the result as read-only.
+ */
+const bodyCache = new WeakMap<VehicleDef, { radius: number; offsets: readonly number[] }>();
+
+export function vehicleBodyCircles(def: VehicleDef): { radius: number; offsets: readonly number[] } {
+  const cached = bodyCache.get(def);
+  if (cached) return cached;
   const radius = def.width / 2;
   const span = Math.max(0, def.length - def.width);
-  if (span === 0) return { radius, offsets: [0] };
-  const count = Math.ceil(span / radius) + 1;
-  const offsets = Array.from({ length: count }, (_, i) => -span / 2 + (span * i) / (count - 1));
-  return { radius, offsets };
+  const count = span === 0 ? 1 : Math.ceil(span / radius) + 1;
+  const offsets = span === 0
+    ? [0]
+    : Array.from({ length: count }, (_, i) => -span / 2 + (span * i) / (count - 1));
+  const body = { radius, offsets: Object.freeze(offsets) };
+  bodyCache.set(def, body);
+  return body;
 }
 
 /** The body circles of a vehicle placed in the world. */
