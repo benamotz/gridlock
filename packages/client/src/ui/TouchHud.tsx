@@ -12,6 +12,8 @@ interface Props {
   onToggleScoreboard(): void;
   onMenu(): void;
   onToggleCrew(): void;
+  /** Whether the big map is open; tapping the minimap toggles it. */
+  mapExpanded: boolean;
 }
 
 /** Sound, full screen and landscape are unlocked once per page, on a tap. */
@@ -123,6 +125,12 @@ export function TouchHud(props: Props): React.ReactElement {
         </button>
       )}
 
+      <button
+        className={`touch-map-hit${props.mapExpanded ? ' expanded' : ''}`}
+        aria-label={props.mapExpanded ? 'Close map' : 'Open map'}
+        {...tap(props.onToggleMap)}
+      />
+
       <div className="touch-top-icons">
         {ready && !fullscreen && fullscreenSupported() && (
           <button className="touch-icon" title="Full screen" onClick={enterFullscreen}>⛶</button>
@@ -132,7 +140,6 @@ export function TouchHud(props: Props): React.ReactElement {
             Crew{hud.crew ? ` ${hud.crew.members.length}` : ''}
           </button>
         )}
-        <button className="touch-icon" {...tap(props.onToggleMap)}>Map</button>
         <button className="touch-icon" {...tap(props.onToggleScoreboard)}>
           {freeRoam ? 'Top $' : 'Scores'}
         </button>

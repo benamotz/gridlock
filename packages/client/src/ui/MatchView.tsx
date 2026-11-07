@@ -145,6 +145,7 @@ export function MatchView(props: Props): React.ReactElement {
           onToggleScoreboard={() => set({ showScoreboard: !useStore.getState().showScoreboard })}
           onMenu={() => set({ settingsOpen: !useStore.getState().settingsOpen })}
           onToggleCrew={() => set({ showCrew: !useStore.getState().showCrew })}
+          mapExpanded={mapExpanded}
         />
       )}
 

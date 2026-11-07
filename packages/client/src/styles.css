@@ -171,6 +171,60 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
   margin: 0 0 8px;
 }
 
+/* ------------------------------------------------------------ main menu -- */
+
+.menu-card { width: min(640px, 100%); }
+.menu-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+.menu-head .tagline { margin-bottom: 0; }
+.brand.small { font-size: 26px; margin-bottom: 12px; }
+.icon-btn { width: 44px; height: 44px; padding: 0; font-size: 20px; display: grid; place-items: center; flex: none; }
+.menu-layout { display: flex; flex-direction: column; gap: 18px; }
+.menu-side { display: flex; flex-direction: column; gap: 14px; }
+.menu-name {
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--muted);
+  background: #0e1118; border: 1px solid var(--line); border-radius: 8px; padding: 0 12px;
+}
+.menu-name input[type="text"] {
+  flex: 1; border: 0; background: transparent; padding: 11px 0; font-weight: 700; color: var(--text);
+}
+.menu-name input[type="text"]:focus { outline: none; }
+.menu-name:focus-within { border-color: var(--accent-2); }
+.menu-name-edit { opacity: 0.6; }
+.menu-actions { display: flex; flex-direction: column; gap: 10px; }
+.menu-actions .btn { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 56px; justify-content: center; }
+.menu-hero { min-height: 84px !important; }
+.menu-hero .menu-btn-title { font-size: 20px; letter-spacing: 0.06em; }
+.menu-btn-title { font-size: 15px; font-weight: 800; }
+.menu-btn-sub { font-size: 11px; font-weight: 500; opacity: 0.72; letter-spacing: 0.02em; }
+.menu-secondary { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.menu-links { display: flex; gap: 10px; align-items: center; color: var(--muted); font-size: 13px; }
+.link-btn {
+  background: none; border: 0; padding: 6px 0; color: var(--accent-2); font-weight: 600;
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.link-btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.menu-controls { margin-top: 18px; border-top: 1px solid var(--line); padding-top: 12px; }
+.menu-controls summary { cursor: pointer; color: var(--muted); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; }
+.menu-controls .controls-grid { margin-top: 10px; }
+
+/* A phone held upright: the same column, sized to the narrow screen. */
+@media (max-width: 480px) {
+  .centered { padding: 12px; }
+  .card { padding: 18px 16px; }
+  .brand { font-size: 32px; letter-spacing: 0.16em; }
+  .menu-head { min-width: 0; }
+}
+
+/* A phone held sideways: brand, name and links on the left, the big choices
+   on the right - everything on one screen, no scrolling. */
+@media (max-height: 520px) and (min-width: 560px) {
+  .menu-card.is-main { width: min(760px, 100%); }
+  .menu-layout { display: grid; grid-template-columns: 1fr 1.15fr; gap: 18px; align-items: center; }
+  .menu-side { gap: 12px; }
+  .menu-hero { min-height: 92px !important; }
+  .menu-actions .btn { min-height: 64px; }
+}
+
 /* ---------------------------------------------------------------- lobby -- */
 
 .lobby-grid {
@@ -764,13 +818,14 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .touch-layer.fire-button .touch-zone.fire { display: none; }
 /* Where each thumb usually rests: a faint ring, until it is touched. */
 .touch-zone::after {
-  content: ''; position: absolute; bottom: 14%; width: 104px; height: 104px;
+  content: ''; position: absolute; bottom: 6%; width: 104px; height: 104px;
   border-radius: 50%; border: 2px dashed rgba(255, 255, 255, 0.13);
 }
 .touch-zone.move::after { left: 12%; }
-.touch-zone.fire::after { right: 12%; border-color: rgba(255, 90, 100, 0.18); }
+/* Kept a clear thumb-width left of the Jump / Reload column on the edge. */
+.touch-zone.fire::after { right: calc(54px + var(--btn, 56px) + var(--safe-r, 0px)); border-color: rgba(255, 90, 100, 0.18); }
 .touch-layer.left-handed .touch-zone.move::after { left: auto; right: 12%; }
-.touch-layer.left-handed .touch-zone.fire::after { right: auto; left: 12%; }
+.touch-layer.left-handed .touch-zone.fire::after { right: auto; left: calc(54px + var(--btn, 56px) + var(--safe-l, 0px)); }
 .touch-stick-base {
   position: absolute; left: 0; top: 0; pointer-events: none;
   width: calc(var(--stick-radius) * 2); height: calc(var(--stick-radius) * 2);
@@ -799,35 +854,36 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .touch-btn.small i { font-style: normal; font-size: 12px; color: #7ef3a4; }
 .touch-btn.empty { opacity: 0.45; }
 .touch-actions { position: absolute; inset: 0; pointer-events: none; }
-/* The right-hand buttons must stay below the icon row under the minimap (it
-   ends ~165px from the top): on a 360px-tall phone they used to overlap it, and
-   the context button sat on top of the full-screen button. Each is capped
-   with min() so larger button sizes push down rather than up. */
-.touch-btn.jump {
-  position: absolute; right: calc(16px + var(--safe-r));
-  bottom: min(calc(var(--btn) * 2.1), calc(100% - 172px - var(--btn)));
+/* The action buttons sit in one column on the screen edge, clear of the fire
+   stick's resting spot (moved inward and down to make room): playtesting
+   found the right thumb landing on Reload and Jump when they sat around it.
+   Context is above Jump, capped below the minimap with min() so a larger
+   button size pushes it down rather than into the map. */
+.touch-btn.reload, .touch-btn.jump, .touch-btn.context {
+  position: absolute; right: calc(10px + var(--safe-r));
 }
 .touch-btn.reload {
-  position: absolute; right: calc(20px + var(--btn) * 1.15 + var(--safe-r));
-  bottom: min(calc(var(--btn) * 1.5), calc(100% - 172px - var(--btn) * 1.6));
+  width: calc(var(--btn) * 0.9); height: calc(var(--btn) * 0.9);
+  bottom: calc(6% + var(--safe-b));
 }
-.touch-btn.fire {
-  position: absolute; right: calc(24px + var(--safe-r)); bottom: calc(18px + var(--safe-b));
-  width: calc(var(--btn) * 1.5); height: calc(var(--btn) * 1.5);
-  background: rgba(255, 59, 78, 0.45); border-color: rgba(255, 120, 130, 0.6); font-size: 13px;
-}
+.touch-btn.jump { bottom: calc(6% + var(--btn) + 14px + var(--safe-b)); }
 .touch-btn.context {
-  position: absolute; right: calc(28px + var(--btn) * 2.3 + var(--safe-r));
-  bottom: min(calc(var(--btn) * 2), calc(100% - 172px - var(--btn) * 0.78));
+  bottom: min(calc(6% + var(--btn) * 2 + 28px + var(--safe-b)), calc(100% - 132px - var(--btn) * 0.78 - var(--safe-t)));
   width: auto; height: calc(var(--btn) * 0.78); max-width: 46vw; padding: 0 16px;
   border-radius: 999px; border-color: var(--accent); color: var(--accent);
   font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block;
   line-height: calc(var(--btn) * 0.78 - 4px);
 }
-.touch-ui.left-handed .touch-btn.jump { right: auto; left: calc(16px + var(--safe-l)); }
-.touch-ui.left-handed .touch-btn.reload { right: auto; left: calc(20px + var(--btn) * 1.15 + var(--safe-l)); }
-.touch-ui.left-handed .touch-btn.fire { right: auto; left: calc(24px + var(--safe-l)); }
-.touch-ui.left-handed .touch-btn.context { right: auto; left: calc(28px + var(--btn) * 2.3 + var(--safe-l)); }
+/* Fire as a button (Settings) takes the stick's resting spot. */
+.touch-btn.fire {
+  position: absolute; right: calc(44px + var(--btn) + var(--safe-r)); bottom: calc(6% + var(--safe-b));
+  width: calc(var(--btn) * 1.5); height: calc(var(--btn) * 1.5);
+  background: rgba(255, 59, 78, 0.45); border-color: rgba(255, 120, 130, 0.6); font-size: 13px;
+}
+.touch-ui.left-handed .touch-btn.reload,
+.touch-ui.left-handed .touch-btn.jump,
+.touch-ui.left-handed .touch-btn.context { right: auto; left: calc(10px + var(--safe-l)); }
+.touch-ui.left-handed .touch-btn.fire { right: auto; left: calc(44px + var(--btn) + var(--safe-l)); }
 
 .touch-pouch { position: absolute; left: calc(10px + var(--safe-l)); top: calc(118px + var(--safe-t)); display: flex; gap: 8px; }
 .touch-slots {
@@ -843,9 +899,15 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .touch-ui.left-handed .touch-slots { left: auto; right: calc(10px + var(--safe-r)); }
 
 .touch-top-icons {
-  position: absolute; right: calc(8px + var(--safe-r)); top: calc(132px + var(--safe-t));
-  display: flex; gap: 5px;
+  position: absolute; right: calc(130px + var(--safe-r)); top: calc(8px + var(--safe-t));
+  display: flex; flex-direction: column; align-items: stretch; gap: 5px;
 }
+/* Tapping the minimap opens the big map; tapping the big map closes it. */
+.touch-map-hit {
+  position: absolute; right: calc(8px + var(--safe-r)); top: calc(8px + var(--safe-t));
+  width: 116px; height: 116px; background: transparent; border: 0; padding: 0;
+}
+.touch-map-hit.expanded { right: 0; top: 0; width: 100%; height: 100%; z-index: 31; }
 .touch-icon {
   background: rgba(10, 13, 20, 0.75); border: 1px solid var(--line); border-radius: 6px;
   color: #eef2f8; font-size: 11px; padding: 6px 9px; min-width: 36px; min-height: 30px;
@@ -868,24 +930,20 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .touch-defence.selected { border-color: var(--good); background: rgba(20, 50, 34, 0.9); color: #eef2f8; }
 
 /* Placement mode: Place / Turn / cancel take the action buttons' spots. */
+.touch-btn.place, .touch-btn.rotate, .touch-btn.cancel { position: absolute; right: calc(10px + var(--safe-r)); }
 .touch-btn.place {
-  position: absolute; right: calc(16px + var(--safe-r));
-  bottom: min(calc(var(--btn) * 2.1), calc(100% - 172px - var(--btn)));
+  bottom: calc(6% + var(--btn) + 14px + var(--safe-b));
   border-color: var(--good); background: rgba(20, 80, 50, 0.7); font-size: 12px;
 }
 .touch-btn.place.invalid { border-color: var(--danger); background: rgba(80, 20, 28, 0.6); }
-.touch-btn.rotate {
-  position: absolute; right: calc(20px + var(--btn) * 1.15 + var(--safe-r));
-  bottom: min(calc(var(--btn) * 1.5), calc(100% - 172px - var(--btn) * 1.6));
-}
+.touch-btn.rotate { bottom: calc(6% + var(--safe-b)); width: calc(var(--btn) * 0.9); height: calc(var(--btn) * 0.9); }
 .touch-btn.cancel {
-  position: absolute; right: calc(24px + var(--btn) * 2.3 + var(--safe-r));
-  bottom: min(calc(var(--btn) * 2), calc(100% - 172px - var(--btn) * 0.72));
+  bottom: min(calc(6% + var(--btn) * 2 + 28px + var(--safe-b)), calc(100% - 132px - var(--btn) * 0.72 - var(--safe-t)));
   width: calc(var(--btn) * 0.72); height: calc(var(--btn) * 0.72); font-size: 14px;
 }
-.touch-ui.left-handed .touch-btn.place { right: auto; left: calc(16px + var(--safe-l)); }
-.touch-ui.left-handed .touch-btn.rotate { right: auto; left: calc(20px + var(--btn) * 1.15 + var(--safe-l)); }
-.touch-ui.left-handed .touch-btn.cancel { right: auto; left: calc(24px + var(--btn) * 2.3 + var(--safe-l)); }
+.touch-ui.left-handed .touch-btn.place,
+.touch-ui.left-handed .touch-btn.rotate,
+.touch-ui.left-handed .touch-btn.cancel { right: auto; left: calc(10px + var(--safe-l)); }
 .touch-placing-hint {
   position: absolute; left: 50%; bottom: calc(56px + var(--safe-b)); transform: translateX(-50%);
   font-size: 10px; color: var(--muted); background: rgba(10, 13, 20, 0.6);
@@ -898,6 +956,8 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
    Ready / Start column pinned so it never scrolls out of reach. */
 @media (max-height: 520px) {
   .centered { padding: 8px calc(10px + env(safe-area-inset-right)) 8px calc(10px + env(safe-area-inset-left)); place-items: start center; }
+  /* Centred while it fits; when it does not, it scrolls from the top rather than clipping. */
+  .centered > * { margin-block: auto; }
   .card { padding: 14px 16px; border-radius: 8px; }
   .brand { font-size: 28px; }
   .tagline { margin-bottom: 10px; font-size: 11px; }
@@ -982,7 +1042,7 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .touch-ui .hud-ammo .reserve { font-size: 11px; }
 .touch-ui .hud-slots, .touch-ui .hud-pouch, .touch-ui .hud-defences, .touch-ui .hud-jump,
 .touch-ui .hud-phone-keys, .touch-ui .vehicle-card, .touch-ui .hud-team-legend { display: none; }
-.touch-ui .hud-status { left: auto; right: calc(132px + var(--safe-r)); top: calc(8px + var(--safe-t)); align-items: flex-end; }
+.touch-ui .hud-status { left: auto; right: calc(8px + var(--safe-r)); top: calc(128px + var(--safe-t)); align-items: flex-end; font-size: 10px; }
 .touch-ui .minimap-wrap { right: calc(8px + var(--safe-r)); top: calc(8px + var(--safe-t)); }
 .touch-ui .minimap-wrap.expanded { right: 50%; top: 50%; transform: translate(50%, -50%); z-index: 30; }
 /* The kill feed moves off the right thumb's side, under the pouch buttons. */

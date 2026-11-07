@@ -46,6 +46,19 @@ devices or when switched on in Settings (Auto / On / Off).
 - **Kill feed:** the newest three lines only.
 - A press on any on-screen button never also counts as a click on the world.
 
+## Layout revision (2026-11-07, after playtesting)
+
+- Jump, Reload and the context button sit in one column on the right edge;
+  the fire stick's resting spot is a thumb-width to their left (playtesting
+  found the right thumb landing on Reload and Jump).
+- Crew / Top $ / menu / full-screen are a column beside the minimap, away
+  from the action buttons. There is no Map button: tap the minimap to open
+  the big map, tap the big map to close it.
+- Main menu: one primary choice (Enter the City), Team Match and Practice
+  as secondary, Private match / Join by code as links, the name inline.
+  Two columns on a sideways phone, so it never scrolls; keyboard controls
+  only on desktop, folded under "Controls".
+
 ## Hybrid fire stick
 
 - **Tap:** fires at the best target ahead. **Hold:** keeps firing and tracks it.

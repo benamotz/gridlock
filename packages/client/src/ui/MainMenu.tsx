@@ -30,77 +30,94 @@ export function MainMenu(props: Props): React.ReactElement {
 
   return (
     <div className="centered">
-      <div className="card">
-        <h1 className="brand">GRIDLOCK</h1>
-        <p className="tagline">Top-down urban team combat</p>
-
+      <div className={`card menu-card${panel === 'main' ? ' is-main' : ''}`}>
+        {panel !== 'main' && (
+          <div className="menu-head">
+            <h1 className="brand small">GRIDLOCK</h1>
+            <button className="btn ghost icon-btn" onClick={props.onOpenSettings} aria-label="Settings">⚙</button>
+          </div>
+        )}
         {status !== 'connected' && (
-          <p className="hint" style={{ marginBottom: 14 }}>
+          <p className="hint" style={{ marginBottom: 10 }}>
             {status === 'connecting' && 'Connecting to the server...'}
             {status === 'reconnecting' && `Reconnecting. ${statusDetail}`}
             {status === 'failed' && 'Server unreachable. Is it running on port 2567?'}
             {status === 'disconnected' && 'Disconnected.'}
           </p>
         )}
-        {error && <p className="error" style={{ marginBottom: 12 }}>{error}</p>}
-
-        <div className="field" style={{ marginBottom: 18 }}>
-          <label htmlFor="name">Display name</label>
-          {/* Input and button share a row of their own, so they line up exactly
-              and match heights instead of centring against the label too. */}
-          <div className="row stretch">
-            <input
-              id="name"
-              className="grow"
-              type="text"
-              value={name}
-              maxLength={18}
-              placeholder="Guest"
-              onChange={(e) => setName(e.target.value)}
-              onBlur={commitName}
-            />
-            <button className="btn ghost" onClick={props.onOpenSettings}>Settings</button>
-          </div>
-        </div>
+        {error && <p className="error" style={{ marginBottom: 10 }}>{error}</p>}
 
         {panel === 'main' && (
-          <div className="menu-grid">
-            <button
-              className="btn primary big"
-              disabled={status !== 'connected'}
-              onClick={() => { commitName(); props.onFreeRoam(); }}
-              title="The always-on city: drop in, roam, and meet whoever is there"
-            >
-              Enter the City
-            </button>
-            <button
-              className="btn big"
-              disabled={status !== 'connected'}
-              onClick={() => { commitName(); props.onQuickPlay(); }}
-            >
-              Quick Match
-            </button>
-            <button
-              className="btn big"
-              disabled={status !== 'connected'}
-              onClick={() => { commitName(); setPanel('create'); }}
-            >
-              Create Private Match
-            </button>
-            <button
-              className="btn big"
-              disabled={status !== 'connected'}
-              onClick={() => { commitName(); setPanel('join'); }}
-            >
-              Join by Code
-            </button>
-            <button
-              className="btn big"
-              disabled={status !== 'connected'}
-              onClick={() => { commitName(); props.onPractice(); }}
-            >
-              Single-Player Practice
-            </button>
+          <div className="menu-layout">
+            <div className="menu-side">
+              <div className="menu-head">
+                <div>
+                  <h1 className="brand">GRIDLOCK</h1>
+                  <p className="tagline">Top-down city crime &amp; combat</p>
+                </div>
+                <button className="btn ghost icon-btn" onClick={props.onOpenSettings} aria-label="Settings">⚙</button>
+              </div>
+              <label className="menu-name">
+                <span>Playing as</span>
+                <input
+                  id="name"
+                  type="text"
+                  value={name}
+                  maxLength={18}
+                  placeholder="Guest"
+                  onChange={(e) => setName(e.target.value)}
+                  onBlur={commitName}
+                  onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+                />
+                <span className="menu-name-edit" aria-hidden>✎</span>
+              </label>
+              <div className="menu-links">
+                <button
+                  className="link-btn"
+                  disabled={status !== 'connected'}
+                  onClick={() => { commitName(); setPanel('create'); }}
+                >
+                  Private match
+                </button>
+                <span aria-hidden>·</span>
+                <button
+                  className="link-btn"
+                  disabled={status !== 'connected'}
+                  onClick={() => { commitName(); setPanel('join'); }}
+                >
+                  Join by code
+                </button>
+              </div>
+            </div>
+
+            <div className="menu-actions">
+              <button
+                className="btn primary menu-hero"
+                disabled={status !== 'connected'}
+                onClick={() => { commitName(); props.onFreeRoam(); }}
+              >
+                <span className="menu-btn-title">Enter the City</span>
+                <span className="menu-btn-sub">Free roam - jobs, cars, cops, crews</span>
+              </button>
+              <div className="menu-secondary">
+                <button
+                  className="btn"
+                  disabled={status !== 'connected'}
+                  onClick={() => { commitName(); props.onQuickPlay(); }}
+                >
+                  <span className="menu-btn-title">Team Match</span>
+                  <span className="menu-btn-sub">Players and bots</span>
+                </button>
+                <button
+                  className="btn"
+                  disabled={status !== 'connected'}
+                  onClick={() => { commitName(); props.onPractice(); }}
+                >
+                  <span className="menu-btn-title">Practice</span>
+                  <span className="menu-btn-sub">You against bots</span>
+                </button>
+              </div>
+            </div>
           </div>
         )}
 
@@ -261,32 +278,27 @@ export function MainMenu(props: Props): React.ReactElement {
           </div>
         )}
 
-        <div className="divider" />
-        {touch ? (
-          <div className="controls-grid">
-            <div><span>Move (push fully to sprint)</span> <span className="kbd">Left thumb</span></div>
-            <div><span>Shoot nearest threat</span> <span className="kbd">Tap right</span></div>
-            <div><span>Aim by hand</span> <span className="kbd">Drag right</span></div>
-            <div><span>Base defences</span> <span className="kbd">Tap twice</span></div>
-          </div>
-        ) : (
-          <div className="controls-grid">
-            <div><span>Move</span> <span className="kbd">WASD</span></div>
-            <div><span>Aim / Fire</span> <span className="kbd">Mouse</span></div>
-            <div><span>Sprint</span> <span className="kbd">Shift</span></div>
-            <div><span>Reload</span> <span className="kbd">R</span></div>
-            <div><span>Enter / exit vehicle</span> <span className="kbd">E</span></div>
-            <div><span>Swap weapon</span> <span className="kbd">F</span></div>
-            <div><span>Weapon slots</span> <span className="kbd">1-4 / Wheel</span></div>
-            <div><span>Scoreboard</span> <span className="kbd">Tab</span></div>
-            <div><span>Jump (dodge bullets)</span> <span className="kbd">Space</span></div>
-            <div><span>Use medkit / armor</span> <span className="kbd">H / G</span></div>
-            <div><span>Barricade / sentry / mine</span> <span className="kbd">Q / T / X</span></div>
-            <div><span>Rotate barricade</span> <span className="kbd">Wheel</span></div>
-            <div><span>Expand map</span> <span className="kbd">M</span></div>
-            <div><span>Crew (free roam)</span> <span className="kbd">C</span></div>
-            <div><span>Menu</span> <span className="kbd">Esc</span></div>
-          </div>
+        {!touch && panel === 'main' && (
+          <details className="menu-controls">
+            <summary>Controls</summary>
+            <div className="controls-grid">
+              <div><span>Move</span> <span className="kbd">WASD</span></div>
+              <div><span>Aim / Fire</span> <span className="kbd">Mouse</span></div>
+              <div><span>Sprint</span> <span className="kbd">Shift</span></div>
+              <div><span>Reload</span> <span className="kbd">R</span></div>
+              <div><span>Enter / exit vehicle</span> <span className="kbd">E</span></div>
+              <div><span>Swap weapon</span> <span className="kbd">F</span></div>
+              <div><span>Weapon slots</span> <span className="kbd">1-4 / Wheel</span></div>
+              <div><span>Scoreboard</span> <span className="kbd">Tab</span></div>
+              <div><span>Jump (dodge bullets)</span> <span className="kbd">Space</span></div>
+              <div><span>Use medkit / armor</span> <span className="kbd">H / G</span></div>
+              <div><span>Barricade / sentry / mine</span> <span className="kbd">Q / T / X</span></div>
+              <div><span>Rotate barricade</span> <span className="kbd">Wheel</span></div>
+              <div><span>Expand map</span> <span className="kbd">M</span></div>
+              <div><span>Crew (free roam)</span> <span className="kbd">C</span></div>
+              <div><span>Menu</span> <span className="kbd">Esc</span></div>
+            </div>
+          </details>
         )}
       </div>
     </div>
