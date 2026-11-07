@@ -410,6 +410,20 @@ export const GAMEPLAY = {
     bountyTimeSec: 180,
     /** Armed guards riding behind the cash van. */
     escortCrew: 3,
+    /** Armed bodyguards around a hit target, more for a bigger player crew. */
+    bodyguards: 2,
+    /**
+     * Courier ambush: the chance a delivery is jumped by a carload of gunmen
+     * (higher for a crew), once the courier is this far along the route.
+     */
+    ambushChance: 0.35,
+    ambushChancePerMate: 0.15,
+    ambushAtProgress: 0.35,
+    ambushCrew: 2,
+    /** A combat job pays this much more for each extra member of a player crew. */
+    crewPayBonus: 0.5,
+    /** Most gunmen any one job puts in a gang. */
+    maxGang: 6,
     /** Crew hideout: gunmen holed up in town, and what clearing them pays. */
     hideoutCrew: 5,
     hideoutReward: 900,

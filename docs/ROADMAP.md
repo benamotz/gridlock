@@ -134,13 +134,24 @@ Phase 1 (everything above) is deployed. Next, agreed 2026-10-24:
    code shown in their HUD; today newcomers appear near a random player.
 2. **In-game chat** - city-wide and nearby channels (the server already
    accepts `chat`; the match screen has no chat box).
-3. **Crews (co-op)** - 2-4 friends: no damage to each other, shared jobs and
-   split pay, the police chase the crew as one.
+3. **Crews (co-op)** - built 2026-11-07. Start one from the Crew button (C on
+   desktop), invite by link (`/?crew=CODE`, the phone's share sheet); opening
+   it drops you into the city beside a crewmate. No damage between members,
+   one shared job (any member can finish it; it passes to a crewmate if its
+   holder goes down), pay split between members near the job, crewmates
+   within `accompliceRadius` of a crime share the heat, and a sighting of any
+   wanted member keeps the whole crew from cooling. Gangs fight the whole
+   crew. Code: `server/src/economy/playerCrews.ts`.
 4. **Always-on hosting** - a paid instance (Render free sleeps when idle and
    every restart wipes the city), then a real session with friends watching
    `/api/health`.
 5. **More cities** - open a second city when the first is full (32).
-6. **More crew fights** - courier ambushes and hit targets with bodyguards.
+6. **More crew fights** - built 2026-11-07. Hit targets get bodyguards who
+   walk with them; courier runs can be ambushed by a carload of gunmen part
+   way along the route; combat jobs pay `crewPayBonus` more per extra crew
+   member and add a gunman per member (capped by `maxGang`). Measured: an
+   ambush car is out and fighting ~3 s after spawning, ~11 damage/s on a
+   courier standing still.
 
 ## Open questions
 

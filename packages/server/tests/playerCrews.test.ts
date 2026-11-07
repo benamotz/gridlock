@@ -200,3 +200,70 @@ describe('crew protocol', () => {
     expect(parseClientMessage({ t: 'crew', action: 'disband' })).toBeNull();
   });
 });
+
+describe('crew fights', () => {
+  const JOBS = GAMEPLAY.jobs;
+  const gangOf = (h: ReturnType<typeof region>, holderId: string) =>
+    [...h.world.players.values()].filter((p) => p.npc === 'thug' && p.markedFor === holderId);
+
+  it('puts armed bodyguards around a hit target, more for a crew', () => {
+    const solo = region();
+    const me = placePlayer(solo.world, 'me', NO_TEAM, 3584, 3072);
+    solo.advance(50);
+    solo.economy.jobs.startKind(me, 'hit');
+    expect(gangOf(solo, me.id)).toHaveLength(JOBS.bodyguards);
+    expect(me.job?.text).toContain('bodyguards');
+
+    const h = crewOfTwo();
+    h.economy.jobs.startKind(h.a, 'hit');
+    expect(gangOf(h, h.a.id)).toHaveLength(JOBS.bodyguards + 1);
+  });
+
+  it('pays a crew more for a gunfight, and the same for a delivery', () => {
+    const solo = region();
+    const me = placePlayer(solo.world, 'me', NO_TEAM, 3584, 3072);
+    solo.advance(50);
+    solo.economy.jobs.startKind(me, 'hideout');
+    const soloPay = me.job!.reward;
+
+    const h = crewOfTwo();
+    h.economy.jobs.startKind(h.a, 'hideout');
+    expect(h.a.job!.reward).toBeGreaterThan(soloPay);
+  });
+
+  it('keeps bodyguards beside their client as the client moves', () => {
+    const h = region();
+    const me = placePlayer(h.world, 'me', NO_TEAM, 3584, 3072);
+    h.advance(50);
+    h.economy.jobs.startKind(me, 'hit');
+    const client = [...h.world.players.values()].find((p) => p.markedFor === me.id && p.npc === 'ped')!;
+    const guards = gangOf(h, me.id);
+    // Let the city run its residents: the client walks, the guards keep up.
+    const mode = h.mode as FreeRoam;
+    for (let i = 0; i < 150; i++) {
+      mode.director!.crews.update();
+      for (const g of guards) {
+        const brain = mode.director!.brains.get(g.id);
+        if (brain?.kind === 'crew') h.world.queueInput(g.id, [{ ...mode.director!.crews.think(brain, g), seq: ++brain.seq, dtMs: 33, slot: -1 }]);
+      }
+      client.x += 1.5;
+      h.advance(33);
+    }
+    for (const g of guards) expect(Math.hypot(g.x - client.x, g.y - client.y)).toBeLessThan(200);
+  });
+
+  it('springs an ambush on a courier part-way along the route', () => {
+    const h = crewOfTwo();
+    h.economy.jobs.startKind(h.a, 'courier');
+    const job = (h.economy.jobs as unknown as { jobs: Map<string, { ambushWithin: number | null }> }).jobs.get(h.a.id)!;
+    job.ambushWithin = Infinity;
+    h.advance(100);
+    const gang = gangOf(h, h.a.id);
+    expect(gang.length).toBe(JOBS.ambushCrew + 1);
+    const car = h.world.vehicles.get(gang[0].vehicleId!);
+    expect(car).toBeDefined();
+    // Spawned out of sight, not on top of the courier.
+    expect(Math.hypot(car!.x - h.a.x, car!.y - h.a.y)).toBeGreaterThan(300);
+    expect(job.ambushWithin).toBeNull();
+  });
+});

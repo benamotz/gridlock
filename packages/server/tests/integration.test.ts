@@ -266,19 +266,32 @@ describe('a crew invite link, over real connections', () => {
   });
 
   it('puts the friend in the city, in the crew, beside the host', async () => {
+    // Polls instead of fixed sleeps: under a full parallel test run the city
+    // can take longer than a few hundred milliseconds to answer.
+    const until = async <T>(get: () => T | undefined | null, ms = 5000): Promise<T> => {
+      const end = Date.now() + ms;
+      for (;;) {
+        const v = get();
+        if (v) return v;
+        if (Date.now() > end) throw new Error('timed out waiting');
+        await wait(50);
+      }
+    };
     await host.connect();
     await friend.connect();
     host.send({ t: 'free_roam' });
-    await wait(300);
+    await until(() => host.snapshots.at(-1));
     host.send({ t: 'crew', action: 'create' });
-    await wait(300);
-    const code = host.snapshots.at(-1)?.self.crew?.code;
+    const code = await until(() => host.snapshots.at(-1)?.self.crew?.code);
     expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
 
     // What opening `/?crew=CODE` sends once the friend's client says hello.
     friend.send({ t: 'free_roam', crew: code });
-    await wait(400);
-    const mine = friend.snapshots.at(-1)!;
+    const mine = await until(() => {
+      const snap = friend.snapshots.at(-1);
+      return snap && snap.self.crew?.members.length === 2
+        && snap.players.some((p) => p.id === host.playerId) ? snap : undefined;
+    });
     expect(mine.self.crew?.members.map((m) => m.id).sort())
       .toEqual([host.playerId, friend.playerId].sort());
     const hostSeen = mine.players.find((p) => p.id === host.playerId);

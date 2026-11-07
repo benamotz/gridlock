@@ -21,6 +21,10 @@ interface Group {
   /** For an escort: the van it guards, and the car it rides in. */
   vanId: number | null;
   carId: number | null;
+  /** Bodyguards: the resident they stay close to and protect. */
+  guardOf: string | null;
+  /** An ambush: the car drives at the holder, and everyone bails out. */
+  chase: boolean;
 }
 
 /**
@@ -122,7 +126,8 @@ export class Crews {
     for (const e of world.events) {
       if (e.e !== 'damage') continue;
       for (const g of this.groups.values()) {
-        if (g.members.has(e.to)) this.alert(g, e.fromX, e.fromY);
+        // A shot at a gunman, or at the client a bodyguard is there for.
+        if (g.members.has(e.to) || g.guardOf === e.to) this.alert(g, e.fromX, e.fromY);
       }
     }
     for (const g of this.groups.values()) {
@@ -160,6 +165,7 @@ export class Crews {
     const g: Group = {
       id: this.nextGroup++, holder, members: new Set(),
       homeX: x, homeY: y, leash, alerted: false, vanId: null, carId: null,
+      guardOf: null, chase: false,
     };
     this.groups.set(g.id, g);
     return g;
@@ -207,6 +213,69 @@ export class Crews {
       const g = this.newGroup(holder.id, n.x, n.y, CREW.leash);
       for (const s of posts.slice(0, count)) this.addMember(g, s.x, s.y);
       return { groupId: g.id, x: n.x, y: n.y };
+    }
+    return null;
+  }
+
+  /**
+   * Armed bodyguards standing around a hit target, following wherever the
+   * target goes. Null if there is no room around them.
+   */
+  spawnBodyguards(client: PlayerEntity, holder: PlayerEntity, count: number): number | null {
+    const world = this.world;
+    const r = GAMEPLAY.player.radius + 2;
+    const spots: { x: number; y: number }[] = [];
+    for (let i = 0; i < 12 && spots.length < count; i++) {
+      const a = (i / 12) * Math.PI * 2;
+      const x = client.x + Math.cos(a) * 56;
+      const y = client.y + Math.sin(a) * 56;
+      if (!world.grid.circleBlocked(x, y, r)) spots.push({ x, y });
+    }
+    if (spots.length === 0) return null;
+    const g = this.newGroup(holder.id, client.x, client.y, CREW.leash * 1.5);
+    g.guardOf = client.id;
+    for (const s of spots) this.addMember(g, s.x, s.y);
+    return g.id;
+  }
+
+  /**
+   * A carload of gunmen that comes for the holder from out of sight, then
+   * bails out and attacks. Null if no road nearby has room for the car.
+   */
+  spawnAmbush(holder: PlayerEntity, count: number): number | null {
+    const world = this.world;
+    const net = this.city.net;
+    // Out of sight where the streets allow it, so it arrives as a surprise;
+    // on a long straight road, at least far enough off to be a car coming.
+    const nodes = this.city.spawnNodes(holder, this.city.humans(), 380, 1000, 360)
+      .map((i) => {
+        const n = net.nodes[i];
+        const hidden = !world.grid.lineOfSight(n.x, n.y, holder.x, holder.y);
+        const far = Math.hypot(n.x - holder.x, n.y - holder.y) >= 560;
+        return { i, ok: hidden || far, rank: (hidden ? 0 : 1) + world.rng() * 0.5 };
+      })
+      .filter((c) => c.ok)
+      .sort((x, y) => x.rank - y.rank)
+      .map((c) => c.i);
+    for (const node of nodes.slice(0, 8)) {
+      const n = net.nodes[node];
+      const rot = Math.atan2(holder.y - n.y, holder.x - n.x);
+      const axis = Math.abs(Math.cos(rot)) > Math.abs(Math.sin(rot))
+        ? (Math.cos(rot) > 0 ? 0 : Math.PI)
+        : (Math.sin(rot) > 0 ? Math.PI / 2 : -Math.PI / 2);
+      if (!this.city.vehicleFits('car', n.x, n.y, axis)) continue;
+      const car = world.addVehicle('car', n.x, n.y, axis);
+      car.protectedFor = holder.id;
+      const g = this.newGroup(holder.id, n.x, n.y, Infinity);
+      g.carId = car.id;
+      g.chase = true;
+      for (let i = 0; i < Math.min(count, 4); i++) {
+        const p = this.addMember(g, n.x, n.y);
+        if (car.driverId === null) car.driverId = p.id;
+        else car.passengers.push(p.id);
+        p.vehicleId = car.id;
+      }
+      return g.id;
     }
     return null;
   }
@@ -260,7 +329,10 @@ export class Crews {
     }
 
     if (p.vehicleId !== null) return this.riding(b, p, g);
-    if (!g.alerted) return this.guard(b, p);
+    if (!g.alerted) {
+      if (g.guardOf) this.followClient(g, b, p);
+      return this.guard(b, p);
+    }
 
     // Keep a weapon fed: a crew fights until it is finished.
     const gun = p.slots[p.slot];
@@ -342,6 +414,22 @@ export class Crews {
     return { buttons: 0, aim: p.aim + Math.sin(this.world.now / 1500 + p.y) * 0.01 };
   }
 
+  /**
+   * Bodyguards keep their posts around the client as the client moves, each
+   * at their own angle, so the group walks with them as a ring.
+   */
+  private followClient(g: Group, b: CrewBrain, p: PlayerEntity): void {
+    const client = this.world.players.get(g.guardOf!);
+    if (!client || client.life !== 'alive') return;
+    let h = 0;
+    for (let i = 0; i < p.id.length; i++) h = (h * 31 + p.id.charCodeAt(i)) >>> 0;
+    const a = (h % 360) * (Math.PI / 180);
+    b.postX = client.x + Math.cos(a) * 52;
+    b.postY = client.y + Math.sin(a) * 52;
+    g.homeX = client.x;
+    g.homeY = client.y;
+  }
+
   /** Escort duty: the driver tails the van; everyone bails out once alerted. */
   private riding(b: CrewBrain, p: PlayerEntity, g: Group): Command {
     const world = this.world;
@@ -355,6 +443,13 @@ export class Crews {
       return { buttons: driver && along > 15 ? Btn.Down : 0, aim: car.rot };
     }
     if (!driver) return { buttons: 0, aim: car.rot };
+    if (g.chase) {
+      // An ambush drives straight at its mark; the sighting in `think` sets
+      // off the bail-out.
+      const mark = this.pickTarget(b, p);
+      if (!mark) return { buttons: along > 15 ? Btn.Down : 0, aim: car.rot };
+      return towards(car, this.city.route(b, car, mark, car.rot), 1, 0, car.rot);
+    }
     const van = g.vanId !== null ? world.vehicles.get(g.vanId) : undefined;
     if (!van) return { buttons: along > 15 ? Btn.Down : 0, aim: car.rot };
     g.homeX = van.x;

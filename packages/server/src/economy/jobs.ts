@@ -50,7 +50,15 @@ interface Job extends Plan {
   crewId: number | null;
   /** The holder's player crew, remembered so the job outlives them leaving. */
   crewCode: string | null;
+  /**
+   * A courier run that will be ambushed once the courier gets this close to
+   * the drop-off (null: no ambush, or it has already happened).
+   */
+  ambushWithin: number | null;
 }
+
+/** Jobs where the pay is for a gunfight, and grows with the crew taking it on. */
+const COMBAT_KINDS: ReadonlySet<JobKind> = new Set(['hit', 'bounty', 'armored', 'hideout']);
 
 interface Offer {
   plan: Plan;
@@ -365,15 +373,26 @@ export class Jobs {
     const world = this.world;
     const job: Job = {
       ...plan, holder: p.id, x: p.x, y: p.y, endsAt: 0, targetId: null, truckId: null, crewId: null,
-      crewCode: this.crews.codeOf(p.id),
+      crewCode: this.crews.codeOf(p.id), ambushWithin: null,
     };
+    // A bigger crew faces more guns, and is paid for it.
+    const extra = this.crews.mates(p).length;
+    if (extra > 0 && COMBAT_KINDS.has(plan.kind)) {
+      job.reward = Math.round((job.reward * (1 + JOBS.crewPayBonus * extra)) / 10) * 10;
+    }
+    const gang = (base: number): number => Math.min(JOBS.maxGang, base + extra);
     switch (plan.kind) {
       case 'courier': {
         // The clock starts from where the player is when they take the job.
         const d = plan.dest!;
         job.x = d.x;
         job.y = d.y;
-        job.endsAt = world.now + (Math.hypot(d.x - p.x, d.y - p.y) / JOBS.courierSpeed + JOBS.courierSlackSec) * 1000;
+        const route = Math.hypot(d.x - p.x, d.y - p.y);
+        job.endsAt = world.now + (route / JOBS.courierSpeed + JOBS.courierSlackSec) * 1000;
+        // Someone has heard about the package.
+        if (world.rng() < JOBS.ambushChance + JOBS.ambushChancePerMate * extra) {
+          job.ambushWithin = route * (1 - JOBS.ambushAtProgress);
+        }
         break;
       }
       case 'hit':
@@ -386,6 +405,13 @@ export class Jobs {
           if (!target) return false;
           target.markedFor = p.id;
           job.targetId = target.id;
+          // A hit target pays for protection; an armed fugitive brings friends
+          // only when a whole crew is coming for them. Best effort either way.
+          const guards = plan.kind === 'hit' ? gang(JOBS.bodyguards) : extra;
+          if (guards > 0) {
+            job.crewId = this.city.crews.spawnBodyguards(target, p, Math.min(guards, 4));
+            if (job.crewId !== null) job.title = `${job.title} (${Math.min(guards, 4)} bodyguards)`;
+          }
         }
         job.endsAt = world.now + (plan.kind === 'hit' ? JOBS.hitTimeSec : JOBS.bountyTimeSec) * 1000;
         break;
@@ -398,7 +424,7 @@ export class Jobs {
         if (!truck) return false;
         job.truckId = truck.id;
         // The guards behind it are best effort: no room, no escort.
-        job.crewId = this.city.crews.spawnEscort(truck, p, JOBS.escortCrew);
+        job.crewId = this.city.crews.spawnEscort(truck, p, gang(JOBS.escortCrew));
         job.endsAt = world.now + JOBS.truckTimeSec * 1000;
         break;
       }
@@ -407,7 +433,7 @@ export class Jobs {
         job.endsAt = world.now + JOBS.decoyTimeSec * 1000;
         break;
       case 'hideout': {
-        const hideout = this.city.crews.spawnHideout(p, plan.crewSize ?? JOBS.hideoutCrew);
+        const hideout = this.city.crews.spawnHideout(p, gang(plan.crewSize ?? JOBS.hideoutCrew));
         if (!hideout) return false;
         job.crewId = hideout.groupId;
         job.x = hideout.x;
@@ -454,9 +480,23 @@ export class Jobs {
     switch (job.kind) {
       case 'courier': {
         // Any of the crew can make the drop.
-        const there = this.crewOn(job).find((p) =>
+        const crew = this.crewOn(job);
+        const there = crew.find((p) =>
           p.life === 'alive' && Math.hypot(p.x - job.x, p.y - job.y) < JOBS.courierRadius);
-        if (there) this.complete(job, there);
+        if (there) {
+          this.complete(job, there);
+          return;
+        }
+        if (job.ambushWithin !== null && job.crewId === null &&
+          Math.hypot(holder.x - job.x, holder.y - job.y) < job.ambushWithin) {
+          // Best effort: no road with room nearby, try again in a moment.
+          const size = Math.min(4, JOBS.ambushCrew + crew.length - 1);
+          job.crewId = this.city.crews.spawnAmbush(holder, size);
+          if (job.crewId !== null) {
+            job.ambushWithin = null;
+            for (const p of crew) this.notice(p, 'Ambush! Someone knew about the package');
+          }
+        }
         return;
       }
       case 'hit':
