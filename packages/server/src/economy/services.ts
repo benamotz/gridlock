@@ -2,6 +2,8 @@ import {
   GAMEPLAY,
   SHOP_ITEMS,
   type ServiceDef,
+  type ShopItemId,
+  type ShopWire,
   type VehicleTypeId,
   vehicleDef,
 } from '@gridlock/shared';
@@ -65,14 +67,14 @@ export class Services {
     }
   }
 
-  /** Interact pressed: buy at a counter, or use a phone. */
+  /**
+   * Interact pressed: use a phone. At a shop the menu does the buying, so the
+   * press is simply taken (it must not also board a car parked alongside).
+   */
   interact(p: PlayerEntity): boolean {
     const s = this.at(p);
     if (!s) return false;
-    if (s.kind === 'shop' && s.item) {
-      this.buy(p, s);
-      return true;
-    }
+    if (s.kind === 'shop') return true;
     if (s.kind === 'phone') {
       this.jobs.phone(p, s.town);
       return true;
@@ -84,10 +86,9 @@ export class Services {
     const s = this.at(p);
     if (!s) return null;
     switch (s.kind) {
-      case 'shop': {
-        const item = SHOP_ITEMS[s.item!];
-        return `E - Buy ${item.name} ($${item.price})`;
-      }
+      case 'shop':
+        // On foot the menu is open; in a car it is a reminder to get out.
+        return p.vehicleId === null ? null : 'Shop - get out to buy';
       case 'phone':
         return this.jobs.has(p) ? 'E - Hang up (drop the job)' : 'E - Take a job';
       case 'store':
@@ -182,22 +183,61 @@ export class Services {
     reportCrime(world, p, 'robbery');
   }
 
-  private buy(p: PlayerEntity, s: ServiceDef): void {
-    const item = SHOP_ITEMS[s.item!];
-    if (p.cash < item.price) {
-      this.notice(p, `${item.name} costs $${item.price} - you have $${p.cash}`);
-      return;
+  /** The shop `p` is standing in on foot, if any. */
+  private shopAt(p: PlayerEntity): ServiceDef | null {
+    if (p.vehicleId !== null || p.life !== 'alive') return null;
+    const s = this.at(p);
+    return s && s.kind === 'shop' ? s : null;
+  }
+
+  /** The menu for the shop `p` is in: every item, and why any cannot be bought. */
+  shopWire(p: PlayerEntity): ShopWire | null {
+    const s = this.shopAt(p);
+    if (!s) return null;
+    return {
+      items: (s.items ?? []).map((id) => ({
+        id, name: SHOP_ITEMS[id].name, price: SHOP_ITEMS[id].price, blocked: this.blocked(p, id),
+      })),
+    };
+  }
+
+  /** Why `p` cannot buy `id` right now, or null when they can. */
+  private blocked(p: PlayerEntity, id: ShopItemId): string | null {
+    const item = SHOP_ITEMS[id];
+    if (p.cash < item.price) return 'Not enough cash';
+    switch (id) {
+      case 'armor':
+        return p.armorPlates >= GAMEPLAY.pouch.maxArmorPlates ? 'Pouch full' : null;
+      case 'medkit':
+        return p.medkits >= GAMEPLAY.pouch.maxMedkits ? 'Pouch full' : null;
+      case 'phone':
+        return p.hasPhone ? 'Already yours' : null;
+      case 'ammo':
+        return this.ammoNeeded(p) ? null : 'Guns are full';
+      default:
+        return null;
     }
-    if (s.item === 'armor' && p.armorPlates >= GAMEPLAY.pouch.maxArmorPlates) {
-      this.notice(p, 'No room for another armor plate');
-      return;
-    }
-    if (s.item === 'medkit' && p.medkits >= GAMEPLAY.pouch.maxMedkits) {
-      this.notice(p, 'No room for another medkit');
-      return;
-    }
-    if (s.item === 'phone' && p.hasPhone) {
-      this.notice(p, 'You already have a cellphone');
+  }
+
+  /** True when any gun carried is short of a full reserve. */
+  private ammoNeeded(p: PlayerEntity): boolean {
+    return p.slots.some((w) => w && w.id !== 'fists' && w.reserve < freshWeapon(w.id, 1).reserve);
+  }
+
+  /**
+   * Buys one item from the shop menu. Everything is checked again here - the
+   * player must be standing in a shop that stocks it, on foot, with the cash -
+   * so the menu is only ever a request.
+   */
+  buy(p: PlayerEntity, id: ShopItemId): void {
+    const s = this.shopAt(p);
+    if (!s || !(s.items ?? []).includes(id)) return;
+    const item = SHOP_ITEMS[id];
+    const reason = this.blocked(p, id);
+    if (reason) {
+      this.notice(p, reason === 'Not enough cash'
+        ? `${item.name} costs $${item.price} - you have $${p.cash}`
+        : `${item.name}: ${reason.toLowerCase()}`);
       return;
     }
     takeCash(this.world, p, item.price, 'purchase');
@@ -207,14 +247,18 @@ export class Services {
       p.slot = slot;
       p.reloadingSlot = -1;
       p.reloadEndsAt = 0;
-    } else if (s.item === 'armor') {
+    } else if (id === 'ammo') {
+      for (const w of p.slots) {
+        if (w && w.id !== 'fists') w.reserve = Math.max(w.reserve, freshWeapon(w.id, 1).reserve);
+      }
+    } else if (id === 'armor') {
       p.armorPlates++;
-    } else if (s.item === 'medkit') {
+    } else if (id === 'medkit') {
       p.medkits++;
-    } else if (s.item === 'phone') {
+    } else if (id === 'phone') {
       p.hasPhone = true;
       p.nextOfferAt = this.world.now + GAMEPLAY.jobs.cellFirstOfferSec * 1000;
-      this.notice(p, 'Cellphone bought - job offers will ring in (Y answer, N decline)');
+      this.notice(p, 'Cellphone bought - job offers will ring in');
     }
   }
 }

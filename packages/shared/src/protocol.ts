@@ -12,10 +12,12 @@ import type {
   PlayerId,
   PlayerLifeState,
   PlayerStats,
+  ShopItemId,
   VehicleTypeId,
   WeaponId,
   WeaponState,
 } from './types.js';
+import { SHOP_STOCK } from './types.js';
 
 export const PROTOCOL_VERSION = 1;
 
@@ -43,6 +45,8 @@ export interface QuickPlayMsg { t: 'quick_play' }
 /** Drop into the always-on city. */
 /** Enter the city; with a crew code (from a share link), join that crew there. */
 export interface FreeRoamMsg { t: 'free_roam'; crew?: string }
+/** Buy one item at the shop the player is standing in (free roam). */
+export interface BuyMsg { t: 'buy'; item: ShopItemId }
 /** Free-roam crew: start one (to invite friends by link), or leave it. */
 export interface CrewMsg { t: 'crew'; action: 'create' | 'leave' }
 /** Single-player practice: a private room pre-filled with bots. */
@@ -82,7 +86,7 @@ export type ClientMessage =
   | HelloMsg | CreateRoomMsg | JoinRoomMsg | QuickPlayMsg | FreeRoamMsg | PracticeMsg
   | LeaveRoomMsg | SetTeamMsg | SetReadyMsg | UpdateConfigMsg | StartMatchMsg
   | RematchMsg | InputMsg | ChatMsg | PingMsg | ReportMsg
-  | RequestScoreboardMsg | SetNameMsg | DeployMsg | PhoneMsg | CrewMsg;
+  | RequestScoreboardMsg | SetNameMsg | DeployMsg | PhoneMsg | CrewMsg | BuyMsg;
 
 // ---------------------------------------------------------------------------
 // Server -> Client
@@ -202,6 +206,20 @@ export interface SelfState {
   phoneOffer: PhoneOfferWire | null;
   /** The player crew this player is in (free roam), if any. */
   crew: CrewWire | null;
+  /** The shop this player is standing in on foot, with its menu; else null. */
+  shop: ShopWire | null;
+}
+
+export interface ShopWire {
+  items: ShopOfferWire[];
+}
+
+export interface ShopOfferWire {
+  id: ShopItemId;
+  name: string;
+  price: number;
+  /** Why it cannot be bought right now (too dear, pouch full...), or null. */
+  blocked: string | null;
 }
 
 export interface CrewWire {
@@ -525,6 +543,10 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       const crew = typeof raw.crew === 'string' ? normalizeCrewCode(raw.crew) : '';
       return crew ? { t: 'free_roam', crew } : { t: 'free_roam' };
     }
+    case 'buy':
+      return typeof raw.item === 'string' && (SHOP_STOCK as readonly string[]).includes(raw.item)
+        ? { t: 'buy', item: raw.item as ShopItemId }
+        : null;
     case 'crew':
       return raw.action === 'create' || raw.action === 'leave'
         ? { t: 'crew', action: raw.action }

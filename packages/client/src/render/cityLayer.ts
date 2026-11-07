@@ -4,7 +4,6 @@ import {
   type MoneyWire,
   type PlayerWire,
   SERVICE_NAMES,
-  SHOP_ITEMS,
   type ServiceDef,
   type ServiceKind,
 } from '@gridlock/shared';
@@ -60,9 +59,7 @@ export function drawServices(
     ctx.font = 'bold 13px ui-monospace, monospace';
     ctx.fillText(style.glyph, s.x, s.y + 1);
 
-    const label = s.item
-      ? `${SHOP_ITEMS[s.item].name} $${SHOP_ITEMS[s.item].price}`
-      : SERVICE_NAMES[s.kind];
+    const label = SERVICE_NAMES[s.kind];
     ctx.font = 'bold 10px ui-monospace, monospace';
     ctx.fillStyle = 'rgba(8,10,15,0.75)';
     const w = ctx.measureText(label).width + 8;

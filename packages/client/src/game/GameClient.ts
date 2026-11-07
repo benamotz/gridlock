@@ -1,4 +1,5 @@
 import {
+  type ShopItemId,
   snapToRoad,
   commandAxes,
   Btn,
@@ -300,6 +301,12 @@ export class GameClient {
   }
 
   unlockAudio(): void {
+    this.audio.resume();
+  }
+
+  /** Buys one item at the shop the player is standing in. */
+  buy(item: ShopItemId): void {
+    this.socket.send({ t: 'buy', item });
     this.audio.resume();
   }
 
@@ -1348,6 +1355,7 @@ export class GameClient {
       hasPhone: snap.self.hasPhone,
       phoneOffer: snap.self.phoneOffer,
       crew: snap.self.crew,
+      shop: snap.self.shop,
       phoneLeftMs: snap.self.phoneOffer
         ? Math.max(0, snap.self.phoneOffer.expiresAt - snap.serverTime)
         : 0,

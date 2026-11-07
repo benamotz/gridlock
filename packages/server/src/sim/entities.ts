@@ -1,6 +1,8 @@
 import {
   type ConnectionState,
   type CrewWire,
+  type ShopItemId,
+  type ShopWire,
   type DeployableKind,
   type SolidDef,
   type InputCommand,
@@ -310,4 +312,8 @@ export interface CityHooks {
   /** The other members of `p`'s player crew who are in the world. */
   crewmates(p: PlayerEntity): PlayerEntity[];
   crewWire(p: PlayerEntity): CrewWire | null;
+  /** The shop menu for the shop `p` stands in on foot, else null. */
+  shopWire(p: PlayerEntity): ShopWire | null;
+  /** Buy one item at the shop `p` stands in; validated in full. */
+  buy(p: PlayerEntity, item: ShopItemId): void;
 }

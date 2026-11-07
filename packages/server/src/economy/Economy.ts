@@ -1,4 +1,4 @@
-import { type CrewWire, GAMEPLAY, type WeaponId } from '@gridlock/shared';
+import { type CrewWire, GAMEPLAY, type ShopItemId, type ShopWire, type WeaponId } from '@gridlock/shared';
 import type { CityHooks, PlayerEntity } from '../sim/entities.js';
 import type { World } from '../sim/World.js';
 import type { CityDirector } from '../npc/CityDirector.js';
@@ -95,6 +95,14 @@ export class Economy implements CityHooks {
 
   crewWire(p: PlayerEntity): CrewWire | null {
     return this.crews.wire(p);
+  }
+
+  shopWire(p: PlayerEntity): ShopWire | null {
+    return this.services.shopWire(p);
+  }
+
+  buy(p: PlayerEntity, item: ShopItemId): void {
+    this.services.buy(p, item);
   }
 
   /** Starts a crew for `p` so they can invite friends by link. */

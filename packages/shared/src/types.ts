@@ -333,7 +333,10 @@ export type CrimeKind = 'assault' | 'murder' | 'vandalism' | 'carjack' | 'robber
 export type ServiceKind = 'chopshop' | 'respray' | 'store' | 'shop' | 'phone';
 
 /** What a shop counter sells. */
-export type ShopItemId = 'smg' | 'shotgun' | 'rifle' | 'armor' | 'medkit' | 'phone';
+export type ShopItemId = 'smg' | 'shotgun' | 'rifle' | 'ammo' | 'armor' | 'medkit' | 'phone';
+
+/** Everything a town shop stocks, in menu order. */
+export const SHOP_STOCK: readonly ShopItemId[] = ['smg', 'shotgun', 'rifle', 'ammo', 'armor', 'medkit', 'phone'];
 
 export interface ServiceDef {
   id: string;
@@ -344,13 +347,16 @@ export interface ServiceDef {
   r: number;
   /** Index into the map's `towns`. */
   town: number;
-  item?: ShopItemId;
+  /** A shop's stock, bought from its menu. */
+  items?: readonly ShopItemId[];
 }
 
 export const SHOP_ITEMS: Record<ShopItemId, { name: string; price: number; weapon?: WeaponId }> = {
   smg: { name: 'SMG', price: 400, weapon: 'smg' },
   shotgun: { name: 'Shotgun', price: 500, weapon: 'shotgun' },
   rifle: { name: 'Rifle', price: 900, weapon: 'rifle' },
+  /** Tops up the reserve of every gun you carry. */
+  ammo: { name: 'Ammo refill', price: 60 },
   armor: { name: 'Armor plate', price: 150 },
   medkit: { name: 'Medkit', price: 80 },
   /** Job offers ring in wherever you are; the booths still work without one. */
@@ -361,7 +367,7 @@ export const SERVICE_NAMES: Record<ServiceKind, string> = {
   chopshop: 'Chop shop',
   respray: 'Respray',
   store: 'Store',
-  shop: 'Gun counter',
+  shop: 'Shop',
   phone: 'Phone',
 };
 

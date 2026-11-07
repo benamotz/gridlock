@@ -991,6 +991,43 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .touch-icon.crew-on { border-color: #3ce0a8; color: #3ce0a8; }
 @media (max-height: 520px) { .crew-panel { padding: 12px 14px; gap: 8px; } }
 
+/* Town shop menu: opens on walking in, a row of item cards under the top
+   HUD, clear of both thumbs. Tap or click a card to buy. */
+.shop-panel {
+  position: absolute; left: 50%; top: 84px; transform: translateX(-50%); z-index: 25;
+  width: min(720px, calc(100% - 24px)); pointer-events: auto; font-family: var(--mono);
+  background: rgba(10, 13, 20, 0.92); border: 1px solid var(--line); border-top: 3px solid #ffd479;
+  border-radius: 10px; padding: 8px 10px 10px; box-shadow: 0 16px 40px rgba(0, 0, 0, 0.5);
+}
+.shop-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.shop-title { font-size: 13px; font-weight: 800; letter-spacing: 0.16em; text-transform: uppercase; color: #ffd479; }
+.shop-cash { font-size: 13px; font-weight: 800; color: #7ef3a4; margin-left: auto; }
+.shop-close {
+  width: 32px; height: 32px; border-radius: 8px; border: 1px solid var(--line);
+  background: rgba(255, 255, 255, 0.06); color: #eef2f8; font-size: 14px;
+}
+.shop-items { display: grid; grid-template-columns: repeat(auto-fill, minmax(118px, 1fr)); gap: 6px; }
+.shop-item {
+  display: flex; flex-direction: column; align-items: flex-start; gap: 2px; text-align: left;
+  min-height: 62px; padding: 7px 9px; border-radius: 8px; color: #eef2f8;
+  background: #151a24; border: 1px solid #2a3142; touch-action: manipulation;
+}
+.shop-item:hover:not(:disabled) { border-color: #ffd479; }
+.shop-item:active:not(:disabled) { transform: scale(0.97); background: #1d2433; }
+.shop-item-name { font-size: 12px; font-weight: 800; }
+.shop-item-price { font-size: 13px; font-weight: 800; color: #ffd479; }
+.shop-item-note { font-size: 10px; color: var(--muted); }
+.shop-item.blocked { opacity: 0.5; }
+.shop-item.blocked .shop-item-note { color: #ffb3ba; }
+/* On a phone it fits between the weapon and pouch buttons on the left and the
+   icon column by the minimap, so neither is covered. */
+.touch-ui .shop-panel {
+  top: calc(60px + var(--safe-t)); transform: none; width: auto;
+  left: calc(180px + var(--safe-l)); right: calc(214px + var(--safe-r));
+}
+.touch-ui .shop-items { grid-template-columns: repeat(4, 1fr); }
+.touch-ui .shop-item { min-height: 54px; padding: 5px 7px; }
+
 /* Incoming call, with large answer buttons. */
 .touch-phone {
   position: absolute; left: 50%; top: calc(104px + var(--safe-t)); transform: translateX(-50%);

@@ -84,6 +84,14 @@ screen. The in-match "Tap to play" wall is gone; a hint line fades instead,
 and sound unlocks on the first thumb lift. iPhones have no web full screen and
 rely on the rotate prompt.
 
+## Town shop menu (2026-11-07)
+
+Each town has one Shop (it used to be a row of single-item counters on the
+pavement). Walking in on foot opens a menu of the whole stock - SMG, Shotgun,
+Rifle, Ammo refill, Armor plate, Medkit, Cellphone - with prices and why any
+item cannot be bought right now; a tap buys (`buy` message, validated in
+`economy/services.ts`). Closing it hides it until you leave and come back.
+
 ## Hybrid fire stick
 
 - **Tap:** fires at the best target ahead. **Hold:** keeps firing and tracks it.

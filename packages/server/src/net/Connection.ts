@@ -252,6 +252,10 @@ export class Connection {
         break;
       }
 
+      case 'buy':
+        this.room?.handleBuy(this.session.playerId, msg.item);
+        break;
+
       case 'crew':
         this.room?.handleCrew(this.session.playerId, msg.action);
         break;

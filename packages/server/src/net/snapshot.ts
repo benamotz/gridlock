@@ -222,6 +222,7 @@ export function buildSnapshot(
     hasPhone: viewer.hasPhone,
     phoneOffer: viewer.phoneOffer,
     crew: world.city?.crewWire(viewer) ?? null,
+    shop: world.city?.shopWire(viewer) ?? null,
   };
 
   return {

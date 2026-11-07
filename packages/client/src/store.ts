@@ -5,6 +5,7 @@ import {
   type JobWire,
   type PhoneOfferWire,
   type CrewWire,
+  type ShopWire,
   DEFAULT_MATCH_CONFIG,
   type DeployStatusWire,
   type DeployableKind,
@@ -214,6 +215,8 @@ export interface HudState {
   phoneLeftMs: number;
   /** The player crew this player is in (free roam). */
   crew: CrewWire | null;
+  /** The shop menu while standing in a shop on foot (free roam). */
+  shop: ShopWire | null;
   killFeed: KillFeedEntry[];
   objective: string;
   rtt: number;
@@ -232,7 +235,7 @@ export const EMPTY_HUD: HudState = {
   wanted: 0, wantedCooling: false, lastCrime: null, bustedAt: 0,
   location: null, outOfJurisdiction: false,
   cash: 0, lastCash: null, notice: null, contactLine: null, holdup: 0, job: null, jobLeftMs: 0, lastBail: 0,
-  hasPhone: false, phoneOffer: null, phoneLeftMs: 0, crew: null,
+  hasPhone: false, phoneOffer: null, phoneLeftMs: 0, crew: null, shop: null,
   killFeed: [], objective: '', rtt: 0,
 };
 

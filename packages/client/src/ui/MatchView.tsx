@@ -9,6 +9,7 @@ import { Scoreboard } from './Scoreboard.js';
 import { SettingsPanel } from './Settings.js';
 import { TouchHud } from './TouchHud.js';
 import { CrewPanel } from './CrewPanel.js';
+import { ShopPanel } from './ShopPanel.js';
 import { touchEnabled } from '../game/touch/device.js';
 
 interface Props {
@@ -37,6 +38,14 @@ export function MatchView(props: Props): React.ReactElement {
   const lastSnapshotAt = useRef(Date.now());
   const [mapExpanded, setMapExpanded] = useState(false);
   const [stalled, setStalled] = useState(false);
+  // The shop menu opens when you walk in; closing it hides it until you
+  // leave and come back.
+  const shop = useStore((s) => s.hud.shop);
+  const cash = useStore((s) => s.hud.cash);
+  const [shopDismissed, setShopDismissed] = useState(false);
+  useEffect(() => {
+    if (!shop) setShopDismissed(false);
+  }, [shop === null]);
   // The big map is sized to the window, and redrawn sharp when it changes.
   const [viewport, setViewport] = useState(() => ({ w: window.innerWidth, h: window.innerHeight }));
   useEffect(() => {
@@ -165,6 +174,15 @@ export function MatchView(props: Props): React.ReactElement {
           onMenu={() => set({ settingsOpen: !useStore.getState().settingsOpen })}
           onToggleCrew={() => set({ showCrew: !useStore.getState().showCrew })}
           mapExpanded={mapExpanded}
+        />
+      )}
+
+      {shop && !shopDismissed && (
+        <ShopPanel
+          shop={shop}
+          cash={cash}
+          onBuy={(item) => clientRef.current?.buy(item)}
+          onClose={() => setShopDismissed(true)}
         />
       )}
 

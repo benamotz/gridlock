@@ -1,6 +1,6 @@
 import type { Rect } from '../math.js';
 import { pointInRect } from '../math.js';
-import type { GameMapDef, RoadGraph, ServiceDef, ShopItemId, ZoneKind } from '../types.js';
+import { type GameMapDef, type RoadGraph, SHOP_STOCK, type ServiceDef, type ZoneKind } from '../types.js';
 import { MapBuilder } from './builder.js';
 
 const W = 16384;
@@ -69,7 +69,6 @@ interface ServicePlan {
   col: number;
   row: number;
   /** A shop's counters, one per item, side by side along the kerb. */
-  items?: ShopItemId[];
 }
 
 const TOWN_SERVICES: ServicePlan[][] = [
@@ -78,7 +77,7 @@ const TOWN_SERVICES: ServicePlan[][] = [
     { kind: 'respray', col: 6, row: 2 },
     { kind: 'store', col: 2, row: 2 },
     { kind: 'store', col: 5, row: 5 },
-    { kind: 'shop', col: 3, row: 4, items: ['smg', 'shotgun', 'armor', 'medkit', 'phone'] },
+    { kind: 'shop', col: 3, row: 4 },
     { kind: 'phone', col: 1, row: 1 },
     { kind: 'phone', col: 4, row: 3 },
     { kind: 'phone', col: 7, row: 7 },
@@ -87,7 +86,7 @@ const TOWN_SERVICES: ServicePlan[][] = [
     { kind: 'chopshop', col: 2, row: 4 },
     { kind: 'respray', col: 4, row: 1 },
     { kind: 'store', col: 1, row: 2 },
-    { kind: 'shop', col: 3, row: 3, items: ['smg', 'shotgun', 'rifle', 'armor', 'phone'] },
+    { kind: 'shop', col: 3, row: 3 },
     { kind: 'phone', col: 5, row: 5 },
     { kind: 'phone', col: 2, row: 1 },
   ],
@@ -96,7 +95,7 @@ const TOWN_SERVICES: ServicePlan[][] = [
     { kind: 'respray', col: 2, row: 2 },
     { kind: 'store', col: 3, row: 4 },
     { kind: 'store', col: 9, row: 1 },
-    { kind: 'shop', col: 1, row: 3, items: ['smg', 'armor', 'medkit', 'phone'] },
+    { kind: 'shop', col: 1, row: 3 },
     { kind: 'phone', col: 4, row: 1 },
     { kind: 'phone', col: 8, row: 4 },
   ],
@@ -113,14 +112,10 @@ function buildServices(): ServiceDef[] {
       // sit at the road's edge; their trigger reaches across the pavement.
       const y = onRoad ? street : street + t.roadW / 2 - 16;
       const id = `${plan.kind}-${town}-${plan.col}-${plan.row}`;
-      if (plan.items) {
-        plan.items.forEach((item, i) => {
-          const offset = (i - (plan.items!.length - 1) / 2) * 76;
-          out.push({ id: `${id}-${item}`, kind: plan.kind, x: x + offset, y, r: 30, town, item });
-        });
-      } else {
-        out.push({ id, kind: plan.kind, x, y, r: onRoad ? 70 : 40, town });
-      }
+      // One shop per town, its whole stock on a menu (it used to be a row of
+      // single-item counters along the pavement).
+      if (plan.kind === 'shop') out.push({ id, kind: 'shop', x, y, r: 46, town, items: SHOP_STOCK });
+      else out.push({ id, kind: plan.kind, x, y, r: onRoad ? 70 : 40, town });
     }
   });
   return out;

@@ -9,6 +9,7 @@ import {
   type MatchPhase,
   type ScoreEntry,
   type ServerMessage,
+  type ShopItemId,
   getMap,
   makeRng,
 } from '@gridlock/shared';
@@ -562,6 +563,14 @@ export class Room {
     const economy = this.economy;
     if (!entity || !economy || entity.isBot) return;
     economy.joinCrew(entity, code);
+  }
+
+  /** Buys at the free-roam shop the player stands in; ignored anywhere else. */
+  handleBuy(playerId: string, item: ShopItemId): void {
+    if (!this.world || this.phase !== 'active') return;
+    const entity = this.world.players.get(playerId);
+    if (!entity || entity.isBot) return;
+    this.world.city?.buy(entity, item);
   }
 
   /** Answers the free-roam cellphone; ignored anywhere else. */

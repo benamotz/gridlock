@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Btn, CollisionGrid, GAMEPLAY, NO_TEAM, SHOP_ITEMS, getMap } from '@gridlock/shared';
+import { Btn, CollisionGrid, GAMEPLAY, NO_TEAM, SHOP_ITEMS, SHOP_STOCK, getMap, weaponDef } from '@gridlock/shared';
 import { makeWorld, placePlayer } from './helpers.js';
 import type { FreeRoam } from '../src/modes/FreeRoam.js';
 import { applyPlayerDamage, destroyVehicle } from '../src/sim/combat.js';
@@ -16,8 +16,8 @@ function region(seed = 9) {
   return { ...h, economy: mode.economy!, director: mode.director! };
 }
 
-const service = (kind: string, item?: string) => {
-  const s = getMap('kestrel-region').services!.find((x) => x.kind === kind && (!item || x.item === item));
+const service = (kind: string) => {
+  const s = getMap('kestrel-region').services!.find((x) => x.kind === kind);
   if (!s) throw new Error(`no ${kind}`);
   return s;
 };
@@ -154,29 +154,83 @@ describe('stores and shops', () => {
     expect(me.heat).toBe(0);
   });
 
-  it('sells from a counter with the interact key', () => {
+  it('sells from the shop menu', () => {
     const h = region();
-    const counter = service('shop', 'smg');
-    const me = placePlayer(h.world, 'me', NO_TEAM, counter.x, counter.y);
+    const shop = service('shop');
+    const me = placePlayer(h.world, 'me', NO_TEAM, shop.x, shop.y);
     const idle = idler(h, me);
     idle(100);
     me.cash = 1000;
-    idle(100, Btn.Interact);
+    h.economy.buy(me, 'smg');
     expect(me.slots.some((w) => w?.id === 'smg')).toBe(true);
     expect(me.cash).toBe(1000 - SHOP_ITEMS.smg.price);
   });
 
   it('refuses a sale the player cannot afford, with a reason', () => {
     const h = region();
-    const counter = service('shop', 'smg');
-    const me = placePlayer(h.world, 'me', NO_TEAM, counter.x, counter.y);
+    const shop = service('shop');
+    const me = placePlayer(h.world, 'me', NO_TEAM, shop.x, shop.y);
     const idle = idler(h, me);
     idle(100);
     me.cash = 10;
     h.world.events = [];
-    idle(100, Btn.Interact);
+    h.economy.buy(me, 'smg');
     expect(me.slots.some((w) => w?.id === 'smg')).toBe(false);
     expect(h.world.events.some((e) => e.e === 'notice' && e.by === 'me')).toBe(true);
+  });
+
+  // Each town used to have a row of single-item counters along the pavement;
+  // now it has one shop with the whole stock on a menu.
+  it('has one shop per town, stocking everything', () => {
+    const map = getMap('kestrel-region');
+    const shops = map.services!.filter((x) => x.kind === 'shop');
+    expect(shops).toHaveLength(map.towns!.length);
+    for (const shop of shops) expect(shop.items).toEqual(SHOP_STOCK);
+  });
+
+  it('shows the menu only on foot inside a shop, with why an item is out of reach', () => {
+    const h = region();
+    const shop = service('shop');
+    const me = placePlayer(h.world, 'me', NO_TEAM, shop.x, shop.y);
+    const idle = idler(h, me);
+    idle(100);
+    me.cash = 100;
+    const menu = h.economy.shopWire(me)!;
+    expect(menu.items.map((i) => i.id)).toEqual(SHOP_STOCK);
+    expect(menu.items.find((i) => i.id === 'rifle')!.blocked).toBe('Not enough cash');
+    expect(menu.items.find((i) => i.id === 'medkit')!.blocked).toBeNull();
+    me.x += 400;
+    expect(h.economy.shopWire(me)).toBeNull();
+  });
+
+  it('ignores a purchase request from outside a shop', () => {
+    const h = region();
+    const shop = service('shop');
+    const me = placePlayer(h.world, 'me', NO_TEAM, shop.x + 400, shop.y);
+    const idle = idler(h, me);
+    idle(100);
+    me.cash = 1000;
+    h.economy.buy(me, 'rifle');
+    expect(me.cash).toBe(1000);
+  });
+
+  it('refills every gun with an ammo refill, and only when one is short', () => {
+    const h = region();
+    const shop = service('shop');
+    const me = placePlayer(h.world, 'me', NO_TEAM, shop.x, shop.y);
+    const idle = idler(h, me);
+    idle(100);
+    me.cash = 1000;
+    h.economy.buy(me, 'smg');
+    const guns = me.slots.filter((w) => w && w.id !== 'fists');
+    // A refill tops every gun up to its full reserve.
+    const full = guns.map((w) => weaponDef(w!.id).reserveMax);
+    for (const w of guns) w!.reserve = 0;
+    h.economy.buy(me, 'ammo');
+    expect(guns.map((w) => w!.reserve)).toEqual(full);
+    const cash = me.cash;
+    h.economy.buy(me, 'ammo');
+    expect(me.cash).toBe(cash);
   });
 
   it('puts every business on open ground', () => {
@@ -364,22 +418,22 @@ describe('cellphone', () => {
 
   function withPhone() {
     const h = region();
-    const counter = service('shop', 'phone');
-    const me = placePlayer(h.world, 'me', NO_TEAM, counter.x, counter.y);
+    const shop = service('shop');
+    const me = placePlayer(h.world, 'me', NO_TEAM, shop.x, shop.y);
     const idle = idler(h, me);
     idle(100);
     me.cash = 1000;
-    idle(100, Btn.Interact);
+    h.economy.buy(me, 'phone');
     return { h, me, idle };
   }
 
-  it('is sold at gun counters, once', () => {
+  it('is sold at the shop, once', () => {
     const { h, me, idle } = withPhone();
     expect(me.hasPhone).toBe(true);
     expect(me.cash).toBe(1000 - SHOP_ITEMS.phone.price);
     h.world.events = [];
     idle(100);
-    idle(100, Btn.Interact);
+    h.economy.buy(me, 'phone');
     expect(me.cash).toBe(1000 - SHOP_ITEMS.phone.price);
   });
 
