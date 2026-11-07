@@ -231,6 +231,9 @@ export class GameClient {
   /** Where the touch layer lives. It is created or removed as the setting changes. */
   attachTouch(host: HTMLElement | null): void {
     this.touchHost = host;
+    // Mobile browsers start audio suspended until a tap; any thumb on the
+    // sticks counts (a finger lifting is the gesture that unlocks it).
+    host?.addEventListener('pointerup', () => this.audio.resume());
     this.syncTouch();
   }
 

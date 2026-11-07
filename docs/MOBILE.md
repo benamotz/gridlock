@@ -75,6 +75,15 @@ after every bump and at every junction. Now, for players only (residents keep
 - a direction within ~17 degrees of a street axis snaps onto it (`snapToRoad`);
 - a white chevron off the car shows the heading the stick is asking for.
 
+## Full screen from the first tap (2026-11-07)
+
+Phones go full screen and lock landscape on their first tap anywhere - menus
+included - and again on the next tap after leaving it (`touch/fullscreen.ts`,
+installed once in `App.tsx`). Portrait shows the rotate prompt over every
+screen. The in-match "Tap to play" wall is gone; a hint line fades instead,
+and sound unlocks on the first thumb lift. iPhones have no web full screen and
+rely on the rotate prompt.
+
 ## Hybrid fire stick
 
 - **Tap:** fires at the best target ahead. **Hold:** keeps firing and tracks it.

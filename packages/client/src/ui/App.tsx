@@ -9,6 +9,11 @@ import { Lobby } from './Lobby.js';
 import { MatchView } from './MatchView.js';
 import { Results } from './Results.js';
 import { SettingsPanel } from './Settings.js';
+import { touchEnabled } from '../game/touch/device.js';
+import { installAutoFullscreen } from '../game/touch/fullscreen.js';
+
+// Phones go full screen (and lock landscape) on their first tap anywhere.
+installAutoFullscreen(() => touchEnabled(useStore.getState().settings.touchControls));
 
 /**
  * Application shell.
@@ -40,8 +45,9 @@ export function App(): React.ReactElement {
   // Only what this component renders from. Subscribing to the whole store made
   // the entire app re-render on every HUD update (15 a second) - a real cost
   // on phones.
-  const { screen, settingsOpen, results, config, roomCode, showScoreboard } = useStore(
+  const { screen, settingsOpen, results, config, roomCode, showScoreboard, touchSetting } = useStore(
     useShallow((s) => ({
+      touchSetting: s.settings.touchControls,
       screen: s.screen,
       settingsOpen: s.settingsOpen,
       results: s.results,
@@ -161,7 +167,12 @@ export function App(): React.ReactElement {
   }, [socket]);
 
   return (
-    <div className="shell">
+    <div className={`shell${touchEnabled(touchSetting) ? ' touch-device' : ''}`}>
+      {/* Phones play sideways on every screen, menus included. */}
+      <div className="app-rotate" aria-hidden={false}>
+        <div className="app-rotate-icon">⟳</div>
+        Turn your phone sideways to play
+      </div>
       <div className="screen">
         {screen === 'connecting' && (
           <div className="centered">

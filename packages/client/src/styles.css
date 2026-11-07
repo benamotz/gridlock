@@ -1007,24 +1007,29 @@ input[type="range"] { accent-color: var(--accent); width: 100%; }
 .touch-phone-buttons .take { background: #1dd1a1; color: #06231a; }
 .touch-phone-buttons .pass { background: rgba(255, 255, 255, 0.14); color: #eef2f8; }
 
-/* First tap: unlocks sound, full screen and (Android) the landscape lock. */
-.touch-start {
-  position: absolute; inset: 0; z-index: 40; border: 0; color: #eef2f8;
-  background: rgba(5, 6, 10, 0.82); display: flex; flex-direction: column;
-  align-items: center; justify-content: center; gap: 10px;
-}
-.touch-start .big { font-size: 26px; font-weight: 800; letter-spacing: 0.1em; }
-.touch-start .sub { font-size: 12px; color: var(--muted); }
 
-/* Portrait: ask for landscape instead of a squashed game. */
-.touch-rotate {
-  display: none; position: absolute; inset: 0; z-index: 50; pointer-events: auto;
-  background: #05060a; color: #eef2f8; font-size: 15px; font-weight: 700;
-  flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;
+/* Phones play sideways on every screen: portrait shows a rotate prompt over
+   the whole app (menus included), not a squashed layout. */
+.app-rotate {
+  display: none; position: fixed; inset: 0; z-index: 100;
+  background: #05060a; color: #eef2f8; font-size: 15px; font-weight: 700; font-family: var(--mono);
+  flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 24px;
 }
-.touch-rotate-icon { font-size: 44px; color: var(--accent); }
+.app-rotate-icon { font-size: 44px; color: var(--accent); animation: rotate-hint 2.4s ease-in-out infinite; }
+@keyframes rotate-hint { 0%, 30% { transform: rotate(0deg); } 60%, 100% { transform: rotate(90deg); } }
 @media (orientation: portrait) {
-  .touch-ui .touch-rotate { display: flex; }
+  .touch-device .app-rotate { display: flex; }
+}
+@media (prefers-reduced-motion: reduce) { .app-rotate-icon { animation: none; } }
+
+/* First-match hint: fades after a few seconds instead of blocking the screen. */
+.touch-hint {
+  position: absolute; left: 50%; bottom: calc(46% + var(--safe-b)); transform: translateX(-50%);
+  font-size: 12px; color: #eef2f8; background: rgba(10, 13, 20, 0.7); border-radius: 6px;
+  padding: 5px 12px; white-space: nowrap; pointer-events: none;
+  animation: touch-hint-fade 6s ease-in forwards;
+}
+@keyframes touch-hint-fade { 0%, 70% { opacity: 1; } 100% { opacity: 0; visibility: hidden; } }
 }
 
 /* The HUD, rearranged around the thumbs: vitals, weapon and pouch top-left;

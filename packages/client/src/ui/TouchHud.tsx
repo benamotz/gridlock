@@ -5,6 +5,7 @@ import type { TouchAction } from '../game/touch/TouchInput.js';
 import { contextFromPrompt } from '../game/touch/gestures.js';
 import { buzz } from '../game/touch/device.js';
 import { useStore } from '../store.js';
+import { enterFullscreen, fullscreenSupported } from '../game/touch/fullscreen.js';
 
 interface Props {
   client(): GameClient | null;
@@ -16,34 +17,6 @@ interface Props {
   mapExpanded: boolean;
 }
 
-/** Sound, full screen and landscape are unlocked once per page, on a tap. */
-let unlocked = false;
-
-/**
- * Full screen, then a landscape lock where the browser allows them (Android
- * Chrome). Must run inside a user action that counts as one: on a touchscreen
- * that is the finger *lifting* (click), not touching down - requesting it on
- * pointerdown was silently refused. iPhones do not offer full screen to web
- * pages and get the rotate prompt instead.
- */
-function enterFullscreen(): void {
-  const root = document.documentElement as HTMLElement & {
-    requestFullscreen?: (o?: object) => Promise<void>;
-  };
-  if (document.fullscreenElement || !root.requestFullscreen) return;
-  root.requestFullscreen({ navigationUI: 'hide' })
-    .then(() => {
-      const orientation = screen.orientation as ScreenOrientation & {
-        lock?: (o: string) => Promise<void>;
-      };
-      return orientation?.lock?.('landscape');
-    })
-    .catch(() => undefined);
-}
-
-const fullscreenSupported = (): boolean =>
-  typeof document !== 'undefined' && document.fullscreenEnabled === true;
-
 const money = (n: number): string => `$${Math.round(n).toLocaleString('en-US')}`;
 
 /**
@@ -53,7 +26,6 @@ const money = (n: number): string => `$${Math.round(n).toLocaleString('en-US')}`
  */
 export function TouchHud(props: Props): React.ReactElement {
   const { hud, settings, config } = useStore();
-  const [ready, setReady] = useState(unlocked);
   // Back gestures and app switches leave full screen; offer a way back in.
   const [fullscreen, setFullscreen] = useState(() => !!document.fullscreenElement);
   useEffect(() => {
@@ -97,13 +69,6 @@ export function TouchHud(props: Props): React.ReactElement {
     onContextMenu: (e: React.MouseEvent) => e.preventDefault(),
   });
 
-  const start = (): void => {
-    unlocked = true;
-    setReady(true);
-    props.client()?.unlockAudio();
-    enterFullscreen();
-  };
-
   const slots = hud.slots.filter((s) => s.weapon !== null);
   const placing = hud.placing;
   // Defences show only where they can be used (inside your own base), like
@@ -113,17 +78,9 @@ export function TouchHud(props: Props): React.ReactElement {
 
   return (
     <div className="touch-hud">
-      <div className="touch-rotate">
-        <div className="touch-rotate-icon">⟳</div>
-        Turn your phone sideways to play
-      </div>
-
-      {!ready && (
-        <button className="touch-start" onClick={start} onContextMenu={(e) => e.preventDefault()}>
-          <span className="big">Tap to play</span>
-          <span className="sub">Left thumb moves · right thumb shoots</span>
-        </button>
-      )}
+      {/* The rotate prompt and full screen are app-wide now (App.tsx). The
+          first-match hint stays, as a line that fades rather than a wall. */}
+      <div className="touch-hint">Left thumb moves · right thumb shoots</div>
 
       <button
         className={`touch-map-hit${props.mapExpanded ? ' expanded' : ''}`}
@@ -132,7 +89,7 @@ export function TouchHud(props: Props): React.ReactElement {
       />
 
       <div className="touch-top-icons">
-        {ready && !fullscreen && fullscreenSupported() && (
+        {!fullscreen && fullscreenSupported() && (
           <button className="touch-icon" title="Full screen" onClick={enterFullscreen}>⛶</button>
         )}
         {freeRoam && (
