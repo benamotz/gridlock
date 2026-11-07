@@ -2,7 +2,8 @@ import type {
   DeployableWire, GameMapDef, JobWire, PickupWire, PlayerWire, VehicleWire,
 } from '@gridlock/shared';
 import { CREW_COLOR, RESIDENT, ZONE_STYLES, teamColorFor } from './assets.js';
-import { jobColor, serviceStyle } from './cityLayer.js';
+import { jobColor } from './cityLayer.js';
+import { drawHealthPickupIcon, drawMapLegend, drawPlaceIcon, drawWeaponPickupIcon } from './mapIcons.js';
 
 export interface MinimapState {
   map: GameMapDef;
@@ -118,27 +119,42 @@ export class Minimap {
     const wx = (x: number) => cx + x * scale;
     const wy = (y: number) => cy + y * scale;
 
-    if (s.expanded) {
-      ctx.font = '600 12px system-ui, sans-serif';
-      ctx.fillStyle = 'rgba(230,236,245,0.6)';
-      ctx.textAlign = 'center';
-      for (const z of s.map.zones) {
-        if (!z.label) continue;
-        ctx.fillText(z.label, wx(z.rect.x + z.rect.w / 2), wy(z.rect.y + z.rect.h / 2));
-      }
-    }
 
     // Businesses as coloured dots; phone booths and shops are what players look
     // for on the big map.
-    for (const svc of s.map.services ?? []) {
-      ctx.fillStyle = serviceStyle(svc.kind).fill;
-      ctx.fillRect(wx(svc.x) - 2.5, wy(svc.y) - 2.5, 5, 5);
+    // Weapons and health first, so a business symbol is never hidden under one.
+    const pickupR = s.expanded ? 3.5 : 3;
+    for (const p of s.pickups) {
+      if (p.kind === 'weapon') drawWeaponPickupIcon(ctx, wx(p.x), wy(p.y), pickupR);
+      else if (p.kind === 'health') drawHealthPickupIcon(ctx, wx(p.x), wy(p.y), pickupR);
     }
 
-    for (const p of s.pickups) {
-      if (p.kind !== 'weapon' && p.kind !== 'health') continue;
-      ctx.fillStyle = p.kind === 'health' ? '#7ef3a4' : '#ffd479';
-      ctx.fillRect(wx(p.x) - 1.5, wy(p.y) - 1.5, 3, 3);
+    // Businesses as symbols: each kind its own colour and pictogram.
+    const iconR = s.expanded ? 7 : 5.5;
+    for (const svc of s.map.services ?? []) {
+      const x = wx(svc.x);
+      const y = wy(svc.y);
+      if (x < -iconR || y < -iconR || x > w + iconR || y > h + iconR) continue;
+      drawPlaceIcon(ctx, svc.kind, x, y, iconR);
+    }
+
+    // Area names on the big map, over the symbols and outlined so a symbol
+    // underneath never makes one unreadable.
+    if (s.expanded) {
+      ctx.font = '700 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.lineJoin = 'round';
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = 'rgba(8, 10, 15, 0.85)';
+      ctx.fillStyle = 'rgba(236, 241, 248, 0.92)';
+      for (const z of s.map.zones) {
+        if (!z.label) continue;
+        const lx = wx(z.rect.x + z.rect.w / 2);
+        const ly = wy(z.rect.y + z.rect.h / 2);
+        ctx.strokeText(z.label, lx, ly);
+        ctx.fillText(z.label, lx, ly);
+      }
     }
 
     for (const v of s.vehicles) {
@@ -221,5 +237,7 @@ export class Minimap {
     ctx.restore();
 
     ctx.restore();
+    // The big map's key, on maps that have businesses to explain.
+    if (s.expanded && (s.map.services?.length ?? 0) > 0) drawMapLegend(ctx, 8, h - 8);
   }
 }

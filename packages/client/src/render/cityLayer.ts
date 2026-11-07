@@ -3,26 +3,19 @@ import {
   type JobWire,
   type MoneyWire,
   type PlayerWire,
-  SERVICE_NAMES,
   type ServiceDef,
   type ServiceKind,
 } from '@gridlock/shared';
 import type { Rect } from '@gridlock/shared';
+import { PLACE_COLORS, PLACE_LABELS, drawPlaceIcon } from './mapIcons.js';
 
 /**
  * Free-roam overlays drawn in world space: the businesses on the street, cash
  * lying around, the hit target, and an arrow to the current job.
  */
 
-const SERVICE_STYLE: Record<ServiceKind, { fill: string; glyph: string }> = {
-  chopshop: { fill: '#ff9f43', glyph: '$' },
-  respray: { fill: '#54a0ff', glyph: 'R' },
-  store: { fill: '#feca57', glyph: 'S' },
-  shop: { fill: '#ee5253', glyph: 'G' },
-  phone: { fill: '#1dd1a1', glyph: 'J' },
-};
-
-export const serviceStyle = (kind: ServiceKind) => SERVICE_STYLE[kind];
+/** Each place's colour, shared with the map symbols (see mapIcons.ts). */
+const placeColor = (kind: ServiceKind): string => PLACE_COLORS[kind];
 
 const inRect = (x: number, y: number, r: Rect, pad = 0) =>
   x >= r.x - pad && x <= r.x + r.w + pad && y >= r.y - pad && y <= r.y + r.h + pad;
@@ -37,29 +30,23 @@ export function drawServices(
   const pulse = 0.55 + 0.25 * Math.sin(time / 380);
   for (const s of services) {
     if (!inRect(s.x, s.y, cull, s.r)) continue;
-    const style = SERVICE_STYLE[s.kind];
+    const fill = placeColor(s.kind);
     ctx.globalAlpha = 0.16;
-    ctx.fillStyle = style.fill;
+    ctx.fillStyle = fill;
     ctx.beginPath();
     ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
     ctx.fill();
     ctx.globalAlpha = pulse;
-    ctx.strokeStyle = style.fill;
+    ctx.strokeStyle = fill;
     ctx.lineWidth = 2;
     ctx.setLineDash([8, 6]);
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.globalAlpha = 1;
 
-    ctx.fillStyle = 'rgba(8,10,15,0.8)';
-    ctx.beginPath();
-    ctx.arc(s.x, s.y, 11, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = style.fill;
-    ctx.font = 'bold 13px ui-monospace, monospace';
-    ctx.fillText(style.glyph, s.x, s.y + 1);
+    drawPlaceIcon(ctx, s.kind, s.x, s.y, 12);
 
-    const label = SERVICE_NAMES[s.kind];
+    const label = PLACE_LABELS[s.kind];
     ctx.font = 'bold 10px ui-monospace, monospace';
     ctx.fillStyle = 'rgba(8,10,15,0.75)';
     const w = ctx.measureText(label).width + 8;
