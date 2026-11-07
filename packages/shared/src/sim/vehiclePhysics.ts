@@ -35,16 +35,44 @@ const REVERSE_UNTIL_ANGLE = 1.2;
 const FULL_LOCK_ANGLE = 0.35;
 /** Below this length a direction counts as no input. */
 const DRIVE_DEADZONE = 0.02;
+/**
+ * A direction this close to a street axis (streets run along the axes) snaps
+ * onto it, so a thumb a few degrees off still settles the car along the road.
+ */
+const ROAD_SNAP = 0.3;
+/** Turning round: slow to this fraction of top speed, then swing round forwards. */
+const U_TURN_PACE = 0.38;
+
+/**
+ * Pedal from stick push: a half push is already full speed, so a thumb resting
+ * partway does not leave the car crawling. A light touch still creeps.
+ */
+export function drivePedal(mag: number): number {
+  return Math.min(1, 0.3 + mag * 1.4);
+}
+
+/** Snaps a heading onto the nearest street axis when it is close to one. */
+export function snapToRoad(angle: number): number {
+  const quarter = Math.PI / 2;
+  const nearest = Math.round(angle / quarter) * quarter;
+  return Math.abs(angleDelta(angle, nearest)) < ROAD_SNAP ? nearest : angle;
+}
 
 /**
  * Screen-relative driving: turns "I want to go that way" into steering and
  * throttle for the vehicle's current pose.
  *
  * Ahead, it steers toward the direction and eases off the throttle for sharp
- * turns. Behind, it brakes if moving fast, then makes a three-point turn -
- * reversing while swinging the nose round - until the nose is roughly on
- * course. Whether it is reversing is read from the velocity rather than stored,
- * so the choice replays identically during client prediction.
+ * turns. Behind, it slows and swings round *forwards* in a tight U-turn. It
+ * only backs up when its nose is against something (`blockedAhead`), and then
+ * keeps reversing until the nose is roughly on course.
+ *
+ * Playtesting: the earlier version reversed whenever the direction was behind
+ * the car, which in a city - after every bump and at every junction - read as
+ * the car going the opposite way to the thumb.
+ *
+ * Whether it is reversing is read from the velocity rather than stored, so the
+ * choice replays identically during client prediction.
  */
 export function steerTowards(
   rot: number,
@@ -52,25 +80,60 @@ export function steerTowards(
   def: Pick<VehicleDef, 'maxSpeed'>,
   dirX: number,
   dirY: number,
+  blockedAhead = false,
+  /**
+   * A player's thumb (true) or a resident's route (false). Residents keep the
+   * original handling - they steer at exact waypoints, need no road snap and
+   * do want to reverse out of a dead end - so only players get the assists.
+   */
+  player = true,
 ): DriveControls {
   const mag = Math.min(1, Math.hypot(dirX, dirY));
   if (mag <= DRIVE_DEADZONE) return { steer: 0, throttle: 0 };
+  if (!player) return routeSteer(rot, along, def, dirX, dirY, mag);
 
-  const delta = angleDelta(rot, Math.atan2(dirY, dirX));
+  const delta = angleDelta(rot, snapToRoad(Math.atan2(dirY, dirX)));
   const off = Math.abs(delta);
+  const pedal = drivePedal(mag);
   // Steering flips while reversing, so the wheel direction that turns the nose
   // toward the target depends on which way the vehicle is rolling.
   const wheel = along < 0 ? -1 : 1;
   const turn = clamp(delta / FULL_LOCK_ANGLE, -1, 1);
 
+  // Backing out of a wall, or finishing a reverse already under way.
+  if (along < -20 && off > REVERSE_UNTIL_ANGLE) {
+    return { steer: Math.sign(delta) * wheel, throttle: -pedal };
+  }
+  if (blockedAhead && off > 0.5 && along < 40) {
+    return { steer: -Math.sign(delta), throttle: -pedal };
+  }
+
+  if (off > BEHIND_ANGLE) {
+    // Turn round forwards: brake down to U-turn pace, then full lock.
+    const pace = def.maxSpeed * U_TURN_PACE;
+    if (along > pace + 40) return { steer: Math.sign(delta) * wheel, throttle: -pedal };
+    return { steer: Math.sign(delta) * wheel, throttle: U_TURN_PACE };
+  }
+
+  const ease = off < Math.PI / 2 ? 0.45 + 0.55 * Math.cos(off) : 0.45;
+  return { steer: turn * wheel, throttle: pedal * ease };
+}
+
+/** The original direction-to-controls mapping, kept for resident drivers. */
+function routeSteer(
+  rot: number, along: number, def: Pick<VehicleDef, 'maxSpeed'>,
+  dirX: number, dirY: number, mag: number,
+): DriveControls {
+  const delta = angleDelta(rot, Math.atan2(dirY, dirX));
+  const off = Math.abs(delta);
+  const wheel = along < 0 ? -1 : 1;
+  const turn = clamp(delta / FULL_LOCK_ANGLE, -1, 1);
   const reversing = along < -20;
   const backUp = reversing
     ? off > REVERSE_UNTIL_ANGLE
     : off > BEHIND_ANGLE && along < def.maxSpeed * 0.25;
   if (backUp) return { steer: Math.sign(delta) * wheel, throttle: -mag };
-  // Target behind while still moving forward quickly: brake into the turn.
   if (off > BEHIND_ANGLE) return { steer: Math.sign(delta) * wheel, throttle: -mag };
-
   const ease = off < Math.PI / 2 ? 0.45 + 0.55 * Math.cos(off) : 0.45;
   return { steer: turn * wheel, throttle: mag * ease };
 }
@@ -90,6 +153,8 @@ export function stepVehicle(
   dt: number,
   grid: CollisionGrid,
   axes: MoveAxes | null = null,
+  /** Who is steering by `axes`: a player (touch assists) or a resident. */
+  player = true,
 ): DriveResult {
   const def = vehicleDef(v.type);
 
@@ -101,7 +166,11 @@ export function stepVehicle(
 
   let controls: DriveControls;
   if (axes && Math.hypot(axes.x, axes.y) > DRIVE_DEADZONE) {
-    controls = steerTowards(v.rot, along, def, axes.x, axes.y);
+    // Nose against a building: the only case where pointing elsewhere backs up.
+    const probe = vehicleBodyCircles(def);
+    const blockedAhead = Math.abs(along) < 40 &&
+      bodyBlocked(grid, probe, v.x + fx * 14, v.y + fy * 14, v.rot);
+    controls = steerTowards(v.rot, along, def, axes.x, axes.y, blockedAhead, player);
   } else {
     const forward = (buttons & Btn.Up) !== 0;
     const back = (buttons & Btn.Down) !== 0;

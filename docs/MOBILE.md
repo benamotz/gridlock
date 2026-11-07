@@ -59,6 +59,19 @@ devices or when switched on in Settings (Auto / On / Off).
   Two columns on a sideways phone, so it never scrolls; keyboard controls
   only on desktop, folded under "Controls".
 
+## Touch driving revision (2026-11-07, after playtesting)
+
+"Point where you want to go" felt like the car went the opposite way: it
+reversed whenever the thumb pointed behind the car, which in a city happens
+after every bump and at every junction. Now, for players only (residents keep
+`routeSteer`, the original mapping):
+
+- pointing behind slows the car and swings it round *forwards*; it backs up
+  only when its nose is against a wall;
+- a half push is already full speed (`drivePedal`);
+- a direction within ~17 degrees of a street axis snaps onto it (`snapToRoad`);
+- a white chevron off the car shows the heading the stick is asking for.
+
 ## Hybrid fire stick
 
 - **Tap:** fires at the best target ahead. **Hold:** keeps firing and tracks it.

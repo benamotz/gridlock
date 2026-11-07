@@ -21,7 +21,7 @@ import { drawActorBody, drawCorpse, drawPickupIcon, drawVehicle, shade } from '.
 import type { PlacementGhost } from '../game/placement.js';
 import { COLLECT_ANIM_MS, type CollectAnim } from '../game/collection.js';
 import { drawWeaponIconCanvas } from './weaponIcons.js';
-import { drawJob, drawMarked, drawMoney, drawServices, drawTargetMarker } from './cityLayer.js';
+import { drawDriveArrow, drawJob, drawMarked, drawMoney, drawServices, drawTargetMarker } from './cityLayer.js';
 import {
   CREW_COLOR, FX, PICKUP_STYLE, PLAYER, RESIDENT, VEHICLE, WORLD, residentColor, teamColorFor, teamSymbol,
 } from './assets.js';
@@ -74,6 +74,8 @@ export interface RenderState {
   job: JobWire | null;
   /** Who a touch tap would hit right now. */
   touchTarget?: { x: number; y: number } | null;
+  /** Touch driving: the heading the stick asks for, drawn as an arrow off the car. */
+  driveArrow?: number | null;
   effects: Effect[];
   colorblind: boolean;
   screenShake: boolean;
@@ -176,6 +178,7 @@ export class Renderer {
     this.drawGhost(s);
     drawMarked(ctx, s.players, s.time);
     if (s.touchTarget) drawTargetMarker(ctx, s.touchTarget.x, s.touchTarget.y, s.time);
+    if (s.driveArrow !== undefined && s.driveArrow !== null) drawDriveArrow(ctx, s.selfX, s.selfY, s.driveArrow);
     this.drawLabels(s, cull);
     drawJob(ctx, s.job, s.selfX, s.selfY, view, s.time);
 

@@ -303,7 +303,8 @@ export function driveVehicle(
   axes: MoveAxes | null = null,
 ): void {
   if (v.destroyed) return;
-  const res = stepVehicle(v, buttons, dt, world.grid, axes);
+  // Residents keep the original route steering; players get the touch assists.
+  const res = stepVehicle(v, buttons, dt, world.grid, axes, !driver.npc);
   if (res.impact > 0) {
     const def = vehicleDef(v.type);
     applyVehicleDamage(

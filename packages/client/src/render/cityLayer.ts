@@ -200,3 +200,24 @@ export function drawTargetMarker(ctx: CanvasRenderingContext2D, x: number, y: nu
   ctx.stroke();
   ctx.restore();
 }
+
+/** A chevron ahead of the car, pointing where the touch stick is steering. */
+export function drawDriveArrow(ctx: CanvasRenderingContext2D, x: number, y: number, angle: number): void {
+  const d = 66;
+  ctx.save();
+  ctx.translate(x + Math.cos(angle) * d, y + Math.sin(angle) * d);
+  ctx.rotate(angle);
+  ctx.globalAlpha = 0.75;
+  ctx.fillStyle = '#ffffff';
+  ctx.strokeStyle = 'rgba(8, 10, 15, 0.8)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(14, 0);
+  ctx.lineTo(-6, -11);
+  ctx.lineTo(-1, 0);
+  ctx.lineTo(-6, 11);
+  ctx.closePath();
+  ctx.stroke();
+  ctx.fill();
+  ctx.restore();
+}

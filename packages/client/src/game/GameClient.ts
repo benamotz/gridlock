@@ -1,4 +1,5 @@
 import {
+  snapToRoad,
   commandAxes,
   Btn,
   CollisionGrid,
@@ -154,6 +155,8 @@ export class GameClient {
   private touchHost: HTMLElement | null = null;
   /** Who a touch tap would hit, for the marker. */
   private touchTarget: { x: number; y: number } | null = null;
+  /** Where the touch stick is steering the car (after road snapping), for the arrow. */
+  private driveArrow: number | null = null;
   /** Players who hurt us, and when: fair auto-targets for a while. */
   private readonly hurtBy = new Map<string, number>();
   /** On-screen performance readout, when switched on. */
@@ -783,6 +786,7 @@ export class GameClient {
       money: snap.money ?? [],
       job: snap.self.job,
       touchTarget: this.touchTarget,
+      driveArrow: this.driveArrow,
       effects: this.effects,
       colorblind: this.settings.colorblind,
       screenShake: this.settings.screenShake,
@@ -969,6 +973,11 @@ export class GameClient {
         : t.aim;
       this.touchTarget = t.target ? { x: t.target.x, y: t.target.y } : null;
       if (t.ax !== undefined) axes = { ax: t.ax, ay: t.ay };
+      // Show the driver which way their thumb is steering - snapped the way the
+      // car will take it - so the link between stick and car is visible.
+      this.driveArrow = snap.self.vehicleId !== null && snap.self.seat === 0 && t.ax !== undefined
+        ? snapToRoad(Math.atan2(t.ay!, t.ax))
+        : null;
     } else if (!this.placement.active) {
       // Aim assist pulls toward nearby enemies, which would drag a placement
       // preview toward whoever is shooting you - and away from the aim the click
