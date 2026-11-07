@@ -25,6 +25,12 @@ export interface DriveResult {
 export interface DriveControls {
   steer: number;
   throttle: number;
+  /**
+   * Turn on the spot (players, nearly stopped): the car swivels at a fixed
+   * rate instead of steering through a circle. Arcade licence, chosen because
+   * it is what a thumb pointing somewhere new expects.
+   */
+  pivot?: boolean;
 }
 
 /** Past this angle off the nose a destination counts as behind the vehicle. */
@@ -40,8 +46,12 @@ const DRIVE_DEADZONE = 0.02;
  * onto it, so a thumb a few degrees off still settles the car along the road.
  */
 const ROAD_SNAP = 0.3;
-/** Turning round: slow to this fraction of top speed, then swing round forwards. */
-const U_TURN_PACE = 0.38;
+/** Slower than this, a player's car turns on the spot toward a new direction... */
+const PIVOT_SPEED = 60;
+/** ...when that direction is more than this far off the nose. */
+const PIVOT_ANGLE = 0.6;
+/** Turn-on-the-spot rate, as a multiple of the vehicle's steering rate. */
+const PIVOT_RATE = 1.1;
 
 /**
  * Pedal from stick push: a half push is already full speed, so a thumb resting
@@ -108,12 +118,15 @@ export function steerTowards(
     return { steer: -Math.sign(delta), throttle: -pedal };
   }
 
-  if (off > BEHIND_ANGLE) {
-    // Turn round forwards: brake down to U-turn pace, then full lock.
-    const pace = def.maxSpeed * U_TURN_PACE;
-    if (along > pace + 40) return { steer: Math.sign(delta) * wheel, throttle: -pedal };
-    return { steer: Math.sign(delta) * wheel, throttle: U_TURN_PACE };
+  // Nearly stopped and pointed somewhere new: swivel to face it, then go.
+  // Playtesting: swinging a parked car round in a forward circle read as the
+  // car spinning, and usually clipped a kerb on the way.
+  if (Math.abs(along) < PIVOT_SPEED && off > PIVOT_ANGLE) {
+    return { steer: Math.sign(delta), throttle: 0, pivot: true };
   }
+  // Pointed behind while moving: brake (steering into it) until slow enough
+  // to swivel round.
+  if (off > BEHIND_ANGLE) return { steer: Math.sign(delta) * wheel, throttle: -pedal };
 
   const ease = off < Math.PI / 2 ? 0.45 + 0.55 * Math.cos(off) : 0.45;
   return { steer: turn * wheel, throttle: pedal * ease };
@@ -180,6 +193,8 @@ export function stepVehicle(
     };
   }
   const throttle = clamp(controls.throttle, -1, 1);
+  // A swivel brakes hard as well as turning, so the car turns where it stands.
+  if (controls.pivot) along *= Math.max(0, 1 - 8 * dt);
 
   if (throttle > 0) {
     // A part-pressed pedal settles at a part of top speed.
@@ -207,8 +222,9 @@ export function stepVehicle(
   const responsiveness = 0.35 + 0.65 * Math.min(1, Math.abs(along) / 45);
   const steerDir = clamp(controls.steer, -1, 1);
   const body = vehicleBodyCircles(def);
-  const nextRot =
-    v.rot + steerDir * def.steering * authority * responsiveness * dt * Math.sign(along || 1);
+  const nextRot = controls.pivot
+    ? v.rot + steerDir * def.steering * PIVOT_RATE * dt
+    : v.rot + steerDir * def.steering * authority * responsiveness * dt * Math.sign(along || 1);
   // Turning swings the nose and tail sideways. Refuse a turn that would swing
   // them into a wall, so a long vehicle cannot rotate its body through a building.
   if (nextRot !== v.rot && !(bodyBlocked(grid, body, v.x, v.y, nextRot) &&

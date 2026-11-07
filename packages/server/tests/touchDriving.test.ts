@@ -31,6 +31,24 @@ describe('touch driving (point where you want to go)', () => {
     expect(headingErr(atSpeed.v.rot, Math.PI)).toBeLessThan(0.15);
   });
 
+  // Regression: with reversing gone, a parked car pointed back the way it
+  // faced swung round in a wide forward circle - it looked like a spin and
+  // usually clipped a kerb. Nearly stopped, it now turns on the spot.
+  it('turns a parked car on the spot to face where you point, then drives off', () => {
+    const v = { type: 'car' as const, x: 5000, y: 5000, rot: 0, vx: 0, vy: 0 };
+    let facedAt = -1;
+    for (let t = 0; t < 45; t++) {
+      stepVehicle(v, 0, 1 / 30, open, { x: -1, y: 0 });
+      if (facedAt < 0 && headingErr(v.rot, Math.PI) < 0.6) facedAt = t / 30;
+      // While turning it stays where it was parked.
+      if (facedAt < 0) expect(Math.hypot(v.x - 5000, v.y - 5000)).toBeLessThan(20);
+    }
+    expect(facedAt).toBeGreaterThan(0);
+    expect(facedAt).toBeLessThan(0.9);
+    expect(headingErr(v.rot, Math.PI)).toBeLessThan(0.05);
+    expect(v.x).toBeLessThan(4950);
+  });
+
   it('backs out only when the nose is against a wall', () => {
     const wall = new CollisionGrid({ ...getMap('kestrel-region'), water: [],
       solids: [{ rect: { x: 5042, y: 4800, w: 60, h: 400 }, kind: 'wall' }] } as never);

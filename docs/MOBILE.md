@@ -66,8 +66,11 @@ reversed whenever the thumb pointed behind the car, which in a city happens
 after every bump and at every junction. Now, for players only (residents keep
 `routeSteer`, the original mapping):
 
-- pointing behind slows the car and swings it round *forwards*; it backs up
-  only when its nose is against a wall;
+- nearly stopped (< 60 u/s) and pointed more than ~35 degrees off the nose,
+  the car turns on the spot (`pivot`, ~0.85 s for an about-face), then drives;
+  pointed behind while moving, it brakes first. A forward U-turn circle was
+  tried and read as a spin from a parking spot. It backs up only when its
+  nose is against a wall;
 - a half push is already full speed (`drivePedal`);
 - a direction within ~17 degrees of a street axis snaps onto it (`snapToRoad`);
 - a white chevron off the car shows the heading the stick is asking for.
