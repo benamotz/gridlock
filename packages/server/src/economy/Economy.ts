@@ -1,4 +1,4 @@
-import { GAMEPLAY, type WeaponId } from '@gridlock/shared';
+import { type CrewWire, GAMEPLAY, type WeaponId } from '@gridlock/shared';
 import type { CityHooks, PlayerEntity } from '../sim/entities.js';
 import type { World } from '../sim/World.js';
 import type { CityDirector } from '../npc/CityDirector.js';
@@ -6,6 +6,7 @@ import { wantedStars } from '../sim/wanted.js';
 import { dropMoney, giveCash, stepMoney, takeCash } from './cash.js';
 import { Jobs } from './jobs.js';
 import { Services } from './services.js';
+import { PlayerCrews } from './playerCrews.js';
 
 const MONEY = GAMEPLAY.money;
 
@@ -17,11 +18,13 @@ const MONEY = GAMEPLAY.money;
 export class Economy implements CityHooks {
   readonly jobs: Jobs;
   readonly services: Services;
+  readonly crews: PlayerCrews;
   /** Players who have already been handed their starting stake this visit. */
   private readonly staked = new Set<string>();
 
   constructor(private readonly world: World, city: CityDirector) {
-    this.jobs = new Jobs(world, city);
+    this.crews = new PlayerCrews(world);
+    this.jobs = new Jobs(world, city, this.crews);
     this.services = new Services(world, this.jobs);
   }
 
@@ -35,6 +38,7 @@ export class Economy implements CityHooks {
     // Forget players who have left, so a later visit starts fresh.
     for (const id of [...this.staked]) if (!world.players.has(id)) this.staked.delete(id);
 
+    this.crews.step();
     stepMoney(world);
     this.services.step();
     this.jobs.step();
@@ -79,5 +83,43 @@ export class Economy implements CityHooks {
 
   answerPhone(p: PlayerEntity, accept: boolean): void {
     this.jobs.answer(p, accept);
+  }
+
+  sameCrew(a: PlayerEntity, b: PlayerEntity): boolean {
+    return this.crews.same(a, b);
+  }
+
+  crewmates(p: PlayerEntity): PlayerEntity[] {
+    return this.crews.mates(p);
+  }
+
+  crewWire(p: PlayerEntity): CrewWire | null {
+    return this.crews.wire(p);
+  }
+
+  /** Starts a crew for `p` so they can invite friends by link. */
+  createCrew(p: PlayerEntity): void {
+    this.crews.create(p);
+  }
+
+  leaveCrew(p: PlayerEntity): void {
+    this.crews.leave(p);
+  }
+
+  /**
+   * Someone arrived by a crew link: join that crew and start beside a member.
+   * A full or vanished crew still lets them into the city, with the reason.
+   */
+  joinCrew(p: PlayerEntity, code: string): void {
+    const result = this.crews.join(p, code);
+    if (result === 'ok') {
+      this.crews.placeNear(p);
+      this.world.emit({ e: 'notice', by: p.id, text: 'You joined the crew' });
+      return;
+    }
+    this.world.emit({
+      e: 'notice', by: p.id,
+      text: result === 'full' ? 'That crew is full - you are on your own' : 'That crew has broken up - you are on your own',
+    });
   }
 }

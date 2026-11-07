@@ -114,6 +114,9 @@ export const residentColor = (npc: 'ped' | 'cop' | 'thug', look: number): string
     : npc === 'thug' ? RESIDENT.crew
       : RESIDENT.clothes[look % RESIDENT.clothes.length];
 
+/** Free-roam crewmates: on screen, on the minimap and in the crew panel. */
+export const CREW_COLOR = '#3ce0a8';
+
 export const PLAYER = {
   radius: 13,
   outline: '#0a0c10',

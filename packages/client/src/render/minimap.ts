@@ -1,7 +1,7 @@
 import type {
   DeployableWire, GameMapDef, JobWire, PickupWire, PlayerWire, VehicleWire,
 } from '@gridlock/shared';
-import { RESIDENT, ZONE_STYLES, teamColorFor } from './assets.js';
+import { CREW_COLOR, RESIDENT, ZONE_STYLES, teamColorFor } from './assets.js';
 import { jobColor, serviceStyle } from './cityLayer.js';
 
 export interface MinimapState {
@@ -155,6 +155,17 @@ export class Minimap {
         continue;
       }
       if (p.npc) continue;
+      // Your crew, wherever they are in the city (they are sent city-wide).
+      if (p.crewmate) {
+        ctx.fillStyle = CREW_COLOR;
+        ctx.strokeStyle = '#0b0e14';
+        ctx.lineWidth = 1.5;
+        ctx.beginPath();
+        ctx.arc(wx(p.x), wy(p.y), 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.stroke();
+        continue;
+      }
       // Wanted players nearby are flagged, the way a police scanner would.
       if (p.wanted > 0) {
         ctx.fillStyle = '#ff3b4e';

@@ -284,6 +284,7 @@ export function MainMenu(props: Props): React.ReactElement {
             <div><span>Barricade / sentry / mine</span> <span className="kbd">Q / T / X</span></div>
             <div><span>Rotate barricade</span> <span className="kbd">Wheel</span></div>
             <div><span>Expand map</span> <span className="kbd">M</span></div>
+            <div><span>Crew (free roam)</span> <span className="kbd">C</span></div>
             <div><span>Menu</span> <span className="kbd">Esc</span></div>
           </div>
         )}

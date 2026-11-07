@@ -63,6 +63,13 @@ export function isCooling(world: World, p: PlayerEntity): boolean {
  */
 export function markSeen(world: World, p: PlayerEntity): void {
   if (p.heat <= 0) return;
+  // A crew is hunted as one: while any wanted member is in sight, nobody in
+  // the crew starts to cool off. Losing the police takes the whole crew.
+  for (const mate of world.city?.crewmates(p) ?? []) {
+    if (mate.heat <= 0) continue;
+    mate.lastSeenAt = world.now;
+    mate.nextCoolAt = Math.max(mate.nextCoolAt, world.now + W.coolDelaySec * 1000);
+  }
   p.lastSeenAt = world.now;
   p.nextCoolAt = Math.max(p.nextCoolAt, world.now + W.coolDelaySec * 1000);
   p.lkpX = p.x;
@@ -179,7 +186,35 @@ export function reportCrime(
   offender.lkpY = offender.y;
   if (officerCanSee(world, offender, stars)) markSeen(world, offender);
   else if (!wasWanted) offender.reportAt = world.now + POLICE.responseDelaySec * 1000;
+  shareHeat(world, offender);
   world.emit({ e: 'crime', by: offender.id, kind, stars });
+}
+
+/**
+ * Crewmates near a crime are accomplices: they take the same wanted level, so
+ * the police come for the crew rather than whoever pulled the trigger. A
+ * member across town had nothing to do with it and keeps a clean record.
+ */
+function shareHeat(world: World, offender: PlayerEntity): void {
+  const radius = GAMEPLAY.freeRoam.playerCrew.accompliceRadius;
+  for (const mate of world.city?.crewmates(offender) ?? []) {
+    if (mate.life !== 'alive') continue;
+    if (Math.hypot(mate.x - offender.x, mate.y - offender.y) > radius) continue;
+    if (mate.heat >= offender.heat) {
+      mate.lastCrimeAt = world.now;
+      mate.nextCoolAt = Math.max(mate.nextCoolAt, offender.nextCoolAt);
+      continue;
+    }
+    const wasWanted = mate.heat > 0;
+    mate.heat = offender.heat;
+    mate.heatTown = offender.heatTown;
+    mate.lastCrimeAt = world.now;
+    mate.nextCoolAt = offender.nextCoolAt;
+    mate.lkpX = mate.x;
+    mate.lkpY = mate.y;
+    if (!wasWanted) mate.reportAt = offender.reportAt;
+    if (offender.lastSeenAt === world.now) mate.lastSeenAt = world.now;
+  }
 }
 
 /** Drops a star at a time from anyone who has stayed out of trouble. */

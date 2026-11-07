@@ -23,7 +23,7 @@ import { COLLECT_ANIM_MS, type CollectAnim } from '../game/collection.js';
 import { drawWeaponIconCanvas } from './weaponIcons.js';
 import { drawJob, drawMarked, drawMoney, drawServices, drawTargetMarker } from './cityLayer.js';
 import {
-  FX, PICKUP_STYLE, PLAYER, RESIDENT, VEHICLE, WORLD, residentColor, teamColorFor, teamSymbol,
+  CREW_COLOR, FX, PICKUP_STYLE, PLAYER, RESIDENT, VEHICLE, WORLD, residentColor, teamColorFor, teamSymbol,
 } from './assets.js';
 
 /** A short-lived visual effect spawned from a server event or a local action. */
@@ -671,13 +671,14 @@ export class Renderer {
       if (!inRect(p.x, p.y, cull) || p.life !== 'alive') continue;
       // Residents are anonymous; a label over every passer-by is clutter.
       if (p.npc) continue;
-      const friendly = s.selfTeam >= 0 && p.team === s.selfTeam;
-      const color = teamColorFor(p.team, s.colorblind);
+      // A free-roam crewmate reads as a friend, in the crew colour.
+      const friendly = p.crewmate === true || (s.selfTeam >= 0 && p.team === s.selfTeam);
+      const color = p.crewmate ? CREW_COLOR : teamColorFor(p.team, s.colorblind);
       const y = p.y - (p.vehicleId !== null ? 34 : 30);
 
       // Team badge: the shape carries team identity without relying on colour.
       ctx.font = 'bold 11px ui-monospace, monospace';
-      const badge = teamSymbol(p.team);
+      const badge = p.crewmate ? '◆' : teamSymbol(p.team);
       const label = `${badge} ${p.name}`;
       const width = ctx.measureText(label).width + 10;
 

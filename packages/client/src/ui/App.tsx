@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { MatchConfig, ServerMessage } from '@gridlock/shared';
+import { type MatchConfig, type ServerMessage, normalizeCrewCode } from '@gridlock/shared';
 import { ClientSocket, type ConnectionStatus } from '../net/ClientSocket.js';
 import { useShallow } from 'zustand/react/shallow';
 import { useStore } from '../store.js';
@@ -16,6 +16,26 @@ import { SettingsPanel } from './Settings.js';
  * Owns the socket, routes server messages into the store, and switches between
  * the menu, lobby, match and results screens as the room's phase changes.
  */
+/**
+ * A crew invite link (`/?crew=CODE`) is read once, on load: the first time the
+ * server says hello, the player goes straight into the city and joins that
+ * crew. The code is then taken out of the address so a later reload or
+ * bookmark does not try to rejoin a crew that may be long gone.
+ */
+let pendingCrew: string | null = (() => {
+  try {
+    const url = new URL(window.location.href);
+    const code = normalizeCrewCode(url.searchParams.get('crew') ?? '');
+    if (url.searchParams.has('crew')) {
+      url.searchParams.delete('crew');
+      window.history.replaceState(null, '', url.pathname + url.search + url.hash);
+    }
+    return code || null;
+  } catch {
+    return null;
+  }
+})();
+
 export function App(): React.ReactElement {
   // Only what this component renders from. Subscribing to the whole store made
   // the entire app re-render on every HUD update (15 a second) - a real cost
@@ -49,6 +69,10 @@ export function App(): React.ReactElement {
     const set = useStore.getState().set;
     switch (msg.t) {
       case 'welcome':
+        if (pendingCrew) {
+          socket.send({ t: 'free_roam', crew: pendingCrew });
+          pendingCrew = null;
+        }
         set({
           playerId: msg.playerId,
           maps: msg.maps,

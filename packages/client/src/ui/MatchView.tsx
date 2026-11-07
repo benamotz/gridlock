@@ -8,6 +8,7 @@ import { HUD } from './HUD.js';
 import { Scoreboard } from './Scoreboard.js';
 import { SettingsPanel } from './Settings.js';
 import { TouchHud } from './TouchHud.js';
+import { CrewPanel } from './CrewPanel.js';
 import { touchEnabled } from '../game/touch/device.js';
 
 interface Props {
@@ -37,13 +38,14 @@ export function MatchView(props: Props): React.ReactElement {
   const [mapExpanded, setMapExpanded] = useState(false);
   const [stalled, setStalled] = useState(false);
   const {
-    settings, settingsOpen, showScoreboard, scoreboard, teamScores, status, set, pushKills,
+    settings, settingsOpen, showScoreboard, showCrew, scoreboard, teamScores, status, set, pushKills,
   } = useStore(useShallow((s) => ({
     // Only what this view uses: the HUD's 15-a-second updates must not
     // re-render the canvas host and everything under it.
     settings: s.settings,
     settingsOpen: s.settingsOpen,
     showScoreboard: s.showScoreboard,
+    showCrew: s.showCrew,
     scoreboard: s.scoreboard,
     teamScores: s.hud.teamScores,
     status: s.status,
@@ -69,6 +71,7 @@ export function MatchView(props: Props): React.ReactElement {
         onScoreboard: (down) => set({ showScoreboard: down }),
         onMenu: () => set({ settingsOpen: !useStore.getState().settingsOpen }),
         onChat: () => undefined,
+        onCrew: () => set({ showCrew: !useStore.getState().showCrew }),
       },
     );
     client.setPlayerId(useStore.getState().playerId);
@@ -141,6 +144,18 @@ export function MatchView(props: Props): React.ReactElement {
           }}
           onToggleScoreboard={() => set({ showScoreboard: !useStore.getState().showScoreboard })}
           onMenu={() => set({ settingsOpen: !useStore.getState().settingsOpen })}
+          onToggleCrew={() => set({ showCrew: !useStore.getState().showCrew })}
+        />
+      )}
+
+      {showCrew && props.config.mode === 'freeroam' && (
+        <CrewPanel
+          onCreate={() => clientRef.current?.crew('create')}
+          onLeave={() => {
+            clientRef.current?.crew('leave');
+            set({ showCrew: false });
+          }}
+          onClose={() => set({ showCrew: false })}
         />
       )}
 

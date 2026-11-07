@@ -444,6 +444,8 @@ export class World {
     // Crew members never hurt each other: surrounding a target in a crossfire
     // once had a hideout crew wipe itself out before the player fired a shot.
     if (attacker.npc === 'thug' && target.npc === 'thug') return false;
+    // Nor do friends in a player crew, by gun or by car.
+    if (this.city?.sameCrew(attacker, target)) return false;
     if (attacker.team < 0 || target.team < 0) return true;
     if (attacker.team !== target.team) return true;
     return this.config.friendlyFire;

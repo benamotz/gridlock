@@ -44,11 +44,15 @@ export function buildSnapshot(
   const near = (x: number, y: number): boolean =>
     dist2(viewer.x, viewer.y, x, y) <= R2;
 
+  // A crew is sent across the whole city, like a team, so friends can find
+  // each other on the map.
+  const crewIds = world.city?.crewWire(viewer)?.members.map((m) => m.id) ?? [];
+
   const players: PlayerWire[] = [];
   for (const p of world.players.values()) {
     if (p.id === viewer.id) continue;
     const teammate = p.team === viewer.team && viewer.team >= 0;
-    if (!teammate && !near(p.x, p.y)) continue;
+    if (!teammate && !crewIds.includes(p.id) && !near(p.x, p.y)) continue;
     // Bodies are still sent; only players waiting to respawn are omitted.
     if (p.life === 'respawning' || p.life === 'spectating') continue;
     players.push({
@@ -69,7 +73,8 @@ export function buildSnapshot(
       air: round(p.air),
       wanted: wantedStars(p.heat),
       ...(p.npc ? { npc: p.npc, look: p.look } : {}),
-      ...(p.markedFor === viewer.id ? { marked: true } : {}),
+      ...(p.markedFor === viewer.id || (p.markedFor && crewIds.includes(p.markedFor)) ? { marked: true } : {}),
+      ...(p.id !== viewer.id && !p.npc && crewIds.includes(p.id) ? { crewmate: true } : {}),
     });
   }
 
@@ -216,6 +221,7 @@ export function buildSnapshot(
     job: viewer.job,
     hasPhone: viewer.hasPhone,
     phoneOffer: viewer.phoneOffer,
+    crew: world.city?.crewWire(viewer) ?? null,
   };
 
   return {

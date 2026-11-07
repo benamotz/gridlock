@@ -184,7 +184,11 @@ export class Connection {
 
       case 'free_roam': {
         const city = this.deps.rooms.freeRoam();
-        if (this.room === city) break;
+        if (this.room === city) {
+          // Already in the city: a crew link still joins the crew.
+          if (msg.crew) city.joinCrew(this.session.playerId, msg.crew);
+          break;
+        }
         if (city.isFull && !city.members.has(this.session.playerId)) {
           return this.fail(
             'city_full',
@@ -193,6 +197,7 @@ export class Connection {
         }
         this.leaveCurrentRoom();
         this.enter(city);
+        if (msg.crew) city.joinCrew(this.session.playerId, msg.crew);
         break;
       }
 
@@ -246,6 +251,10 @@ export class Connection {
         });
         break;
       }
+
+      case 'crew':
+        this.room?.handleCrew(this.session.playerId, msg.action);
+        break;
 
       case 'phone':
         this.room?.handlePhone(this.session.playerId, msg.answer === 'accept');

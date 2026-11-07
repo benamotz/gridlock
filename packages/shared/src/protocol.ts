@@ -41,7 +41,10 @@ export interface CreateRoomMsg {
 export interface JoinRoomMsg { t: 'join_room'; code: string }
 export interface QuickPlayMsg { t: 'quick_play' }
 /** Drop into the always-on city. */
-export interface FreeRoamMsg { t: 'free_roam' }
+/** Enter the city; with a crew code (from a share link), join that crew there. */
+export interface FreeRoamMsg { t: 'free_roam'; crew?: string }
+/** Free-roam crew: start one (to invite friends by link), or leave it. */
+export interface CrewMsg { t: 'crew'; action: 'create' | 'leave' }
 /** Single-player practice: a private room pre-filled with bots. */
 export interface PracticeMsg { t: 'practice'; config: Partial<MatchConfig> }
 export interface LeaveRoomMsg { t: 'leave_room' }
@@ -79,7 +82,7 @@ export type ClientMessage =
   | HelloMsg | CreateRoomMsg | JoinRoomMsg | QuickPlayMsg | FreeRoamMsg | PracticeMsg
   | LeaveRoomMsg | SetTeamMsg | SetReadyMsg | UpdateConfigMsg | StartMatchMsg
   | RematchMsg | InputMsg | ChatMsg | PingMsg | ReportMsg
-  | RequestScoreboardMsg | SetNameMsg | DeployMsg | PhoneMsg;
+  | RequestScoreboardMsg | SetNameMsg | DeployMsg | PhoneMsg | CrewMsg;
 
 // ---------------------------------------------------------------------------
 // Server -> Client
@@ -197,6 +200,20 @@ export interface SelfState {
   hasPhone: boolean;
   /** A call ringing right now, waiting for an answer. */
   phoneOffer: PhoneOfferWire | null;
+  /** The player crew this player is in (free roam), if any. */
+  crew: CrewWire | null;
+}
+
+export interface CrewWire {
+  /** Goes in the invite link; anyone with it can join while there is room. */
+  code: string;
+  members: CrewMemberWire[];
+}
+
+export interface CrewMemberWire {
+  id: PlayerId;
+  name: string;
+  alive: boolean;
 }
 
 export type JobKind = 'courier' | 'hit' | 'boost' | 'armored' | 'decoy' | 'bounty' | 'hideout';
@@ -261,8 +278,10 @@ export interface PlayerWire {
   npc?: NpcKind;
   /** Resident clothing variant, so a crowd is not a row of clones. */
   look?: number;
-  /** This resident is the viewer's hit-job target. */
+  /** This resident is the viewer's (or their crew's) job target. */
   marked?: boolean;
+  /** In the viewer's crew: never a target, drawn in the crew colour. */
+  crewmate?: boolean;
 }
 
 export interface VehicleWire {
@@ -502,8 +521,14 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
       return { t: 'join_room', code: str(raw.code, 8).toUpperCase() };
     case 'quick_play':
       return { t: 'quick_play' };
-    case 'free_roam':
-      return { t: 'free_roam' };
+    case 'free_roam': {
+      const crew = typeof raw.crew === 'string' ? normalizeCrewCode(raw.crew) : '';
+      return crew ? { t: 'free_roam', crew } : { t: 'free_roam' };
+    }
+    case 'crew':
+      return raw.action === 'create' || raw.action === 'leave'
+        ? { t: 'crew', action: raw.action }
+        : null;
     case 'phone':
       return raw.answer === 'accept' || raw.answer === 'decline'
         ? { t: 'phone', answer: raw.answer }
@@ -573,4 +598,12 @@ export function parseClientMessage(raw: unknown): ClientMessage | null {
     default:
       return null;
   }
+}
+
+/** Crew codes use the room-code alphabet (no I, O, 0, 1) and are 6 long. */
+export const CREW_CODE_LENGTH = 6;
+
+export function normalizeCrewCode(input: string): string {
+  const code = input.toUpperCase().replace(/[^A-HJ-NP-Z2-9]/g, '').slice(0, CREW_CODE_LENGTH);
+  return code.length === CREW_CODE_LENGTH ? code : '';
 }

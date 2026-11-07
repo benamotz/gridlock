@@ -11,6 +11,7 @@ interface Props {
   onToggleMap(): void;
   onToggleScoreboard(): void;
   onMenu(): void;
+  onToggleCrew(): void;
 }
 
 /** Sound, full screen and landscape are unlocked once per page, on a tap. */
@@ -125,6 +126,11 @@ export function TouchHud(props: Props): React.ReactElement {
       <div className="touch-top-icons">
         {ready && !fullscreen && fullscreenSupported() && (
           <button className="touch-icon" title="Full screen" onClick={enterFullscreen}>⛶</button>
+        )}
+        {freeRoam && (
+          <button className={`touch-icon${hud.crew ? ' crew-on' : ''}`} {...tap(props.onToggleCrew)}>
+            Crew{hud.crew ? ` ${hud.crew.members.length}` : ''}
+          </button>
         )}
         <button className="touch-icon" {...tap(props.onToggleMap)}>Map</button>
         <button className="touch-icon" {...tap(props.onToggleScoreboard)}>

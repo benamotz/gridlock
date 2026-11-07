@@ -16,6 +16,7 @@ import { World } from '../sim/World.js';
 import type { PlayerEntity } from '../sim/entities.js';
 import { BotController } from '../bots/BotController.js';
 import { createMode, type GameMode, type MatchResult } from '../modes/index.js';
+import type { FreeRoam } from '../modes/FreeRoam.js';
 import { balanceTeams, botsNeeded, pickTeamForJoin, type Balanceable } from '../teams.js';
 import { buildSnapshot } from '../net/snapshot.js';
 import { tryDeploy } from '../sim/deployables.js';
@@ -539,6 +540,28 @@ export class Room {
     // A bot-controlled slot ignores client input outright.
     if (!m || m.isBot) return;
     this.world.queueInput(playerId, cmds);
+  }
+
+  /** The city's economy (and its player crews); null outside free roam. */
+  private get economy() {
+    return this.mode?.id === 'freeroam' ? (this.mode as FreeRoam).economy : null;
+  }
+
+  /** Starts or leaves a free-roam player crew; ignored anywhere else. */
+  handleCrew(playerId: string, action: 'create' | 'leave'): void {
+    const entity = this.world?.players.get(playerId);
+    const economy = this.economy;
+    if (!entity || !economy || entity.isBot) return;
+    if (action === 'create') economy.createCrew(entity);
+    else economy.leaveCrew(entity);
+  }
+
+  /** Joins a player who arrived by a crew link to that crew. */
+  joinCrew(playerId: string, code: string): void {
+    const entity = this.world?.players.get(playerId);
+    const economy = this.economy;
+    if (!entity || !economy || entity.isBot) return;
+    economy.joinCrew(entity, code);
   }
 
   /** Answers the free-roam cellphone; ignored anywhere else. */

@@ -4,6 +4,7 @@ import {
   type CrimeKind,
   type JobWire,
   type PhoneOfferWire,
+  type CrewWire,
   DEFAULT_MATCH_CONFIG,
   type DeployStatusWire,
   type DeployableKind,
@@ -211,6 +212,8 @@ export interface HudState {
   /** A call ringing now, and how long until it rings off. */
   phoneOffer: PhoneOfferWire | null;
   phoneLeftMs: number;
+  /** The player crew this player is in (free roam). */
+  crew: CrewWire | null;
   killFeed: KillFeedEntry[];
   objective: string;
   rtt: number;
@@ -229,7 +232,7 @@ export const EMPTY_HUD: HudState = {
   wanted: 0, wantedCooling: false, lastCrime: null, bustedAt: 0,
   location: null, outOfJurisdiction: false,
   cash: 0, lastCash: null, notice: null, contactLine: null, holdup: 0, job: null, jobLeftMs: 0, lastBail: 0,
-  hasPhone: false, phoneOffer: null, phoneLeftMs: 0,
+  hasPhone: false, phoneOffer: null, phoneLeftMs: 0, crew: null,
   killFeed: [], objective: '', rtt: 0,
 };
 
@@ -262,6 +265,8 @@ interface GameStore {
   killFeed: (KillFeedEntry & { at: number })[];
   scoreboard: ScoreEntry[];
   showScoreboard: boolean;
+  /** The free-roam crew panel (invite, members, leave). */
+  showCrew: boolean;
   chat: ChatLine[];
   results: MatchEndMsg | null;
   settings: Settings;
@@ -294,6 +299,7 @@ export const useStore = create<GameStore>((set) => ({
   killFeed: [],
   scoreboard: [],
   showScoreboard: false,
+  showCrew: false,
   chat: [],
   results: null,
   settings: loadSettings(),

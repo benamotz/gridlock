@@ -255,3 +255,34 @@ describe('server rejects hostile clients', () => {
     expect(closed).toBe(true);
   }, 8000);
 });
+
+describe('a crew invite link, over real connections', () => {
+  const host = new TestClient('CrewHost');
+  const friend = new TestClient('CrewFriend');
+
+  afterAll(() => {
+    host.close();
+    friend.close();
+  });
+
+  it('puts the friend in the city, in the crew, beside the host', async () => {
+    await host.connect();
+    await friend.connect();
+    host.send({ t: 'free_roam' });
+    await wait(300);
+    host.send({ t: 'crew', action: 'create' });
+    await wait(300);
+    const code = host.snapshots.at(-1)?.self.crew?.code;
+    expect(code).toMatch(/^[A-HJ-NP-Z2-9]{6}$/);
+
+    // What opening `/?crew=CODE` sends once the friend's client says hello.
+    friend.send({ t: 'free_roam', crew: code });
+    await wait(400);
+    const mine = friend.snapshots.at(-1)!;
+    expect(mine.self.crew?.members.map((m) => m.id).sort())
+      .toEqual([host.playerId, friend.playerId].sort());
+    const hostSeen = mine.players.find((p) => p.id === host.playerId);
+    expect(hostSeen?.crewmate).toBe(true);
+    expect(Math.hypot(hostSeen!.x - mine.self.x, hostSeen!.y - mine.self.y)).toBeLessThan(260);
+  });
+});

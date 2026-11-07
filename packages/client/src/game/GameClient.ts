@@ -171,6 +171,8 @@ export class GameClient {
       onScoreboard(down: boolean): void;
       onMenu(): void;
       onChat(): void;
+      /** Toggle the free-roam crew panel. */
+      onCrew?(): void;
     },
   ) {
     this.map = getMap(mapId);
@@ -188,6 +190,9 @@ export class GameClient {
       onChat: () => this.callbacks.onChat(),
       onDeploy: (kind) => this.onDeployKey(kind),
       onPhone: (accept) => this.answerPhone(accept),
+      onCrew: () => {
+        if (this.config.mode === 'freeroam') this.callbacks.onCrew?.();
+      },
       onWheel: (direction) => this.placement.rotate(direction),
       onPrimaryClick: () => this.confirmPlacement(),
       onSecondaryClick: () => this.cancelPlacement(),
@@ -290,6 +295,11 @@ export class GameClient {
 
   unlockAudio(): void {
     this.audio.resume();
+  }
+
+  /** Starts a crew (to invite friends by link), or leaves the current one. */
+  crew(action: 'create' | 'leave'): void {
+    this.socket.send({ t: 'crew', action });
   }
 
   /** Answers the cellphone; only a ringing phone can be answered. */
@@ -1325,6 +1335,7 @@ export class GameClient {
       lastBail: this.lastBail,
       hasPhone: snap.self.hasPhone,
       phoneOffer: snap.self.phoneOffer,
+      crew: snap.self.crew,
       phoneLeftMs: snap.self.phoneOffer
         ? Math.max(0, snap.self.phoneOffer.expiresAt - snap.serverTime)
         : 0,

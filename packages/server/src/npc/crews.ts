@@ -7,7 +7,10 @@ const CREW = GAMEPLAY.crew;
 
 interface Group {
   id: number;
-  /** The one player this crew fights; nobody else is ever a target. */
+  /**
+   * The player this gang was set against. It fights them and their player
+   * crew (friends on the job together), and nobody else.
+   */
   holder: string;
   members: Set<string>;
   homeX: number;
@@ -55,6 +58,51 @@ export class Crews {
     return this.groups.get(groupId)?.alerted ?? false;
   }
 
+  /** The job changed hands within a player crew: the gang follows it. */
+  setHolder(groupId: number, holder: string): void {
+    const g = this.groups.get(groupId);
+    if (!g) return;
+    g.holder = holder;
+    for (const id of g.members) {
+      const b = this.city.brains.get(id);
+      if (b?.kind === 'crew' && b.targetId !== null) b.targetId = holder;
+      const p = this.world.players.get(id);
+      if (p) p.markedFor = holder;
+    }
+  }
+
+  /**
+   * Who a member fights this tick: the nearest living player among the job's
+   * holder and their crewmates, preferring one in sight.
+   */
+  private pickTarget(b: CrewBrain, p: PlayerEntity): PlayerEntity | undefined {
+    const world = this.world;
+    const holder = b.targetId ? world.players.get(b.targetId) : undefined;
+    if (!holder) return undefined;
+    const pool = [holder, ...(world.city?.crewmates(holder) ?? [])].filter((t) => t.life === 'alive');
+    let best: PlayerEntity | undefined;
+    let bestScore = Infinity;
+    for (const t of pool) {
+      const d = Math.hypot(t.x - p.x, t.y - p.y);
+      const inSight = d < CREW.aggroRange && world.grid.lineOfSight(p.x, p.y, t.x, t.y);
+      const score = d - (inSight ? 10_000 : 0);
+      if (score < bestScore) {
+        bestScore = score;
+        best = t;
+      }
+    }
+    return best;
+  }
+
+  /** The job's holder, or one of their crewmates. */
+  private onHoldersSide(g: Group, id: string | null): boolean {
+    if (!id) return false;
+    if (id === g.holder) return true;
+    const holder = this.world.players.get(g.holder);
+    const other = this.world.players.get(id);
+    return !!holder && !!other && !!this.world.city?.sameCrew(holder, other);
+  }
+
   /** The job is over: survivors stop fighting and drift off like anyone else. */
   disband(groupId: number): void {
     const g = this.groups.get(groupId);
@@ -80,7 +128,8 @@ export class Crews {
     for (const g of this.groups.values()) {
       if (g.alerted || g.vanId === null) continue;
       const van = world.vehicles.get(g.vanId);
-      const attacked = van && van.lastDamagedBy === g.holder && world.now - van.lastDamagedAt < 1500;
+      const attacked = van && this.onHoldersSide(g, van.lastDamagedBy) &&
+        world.now - van.lastDamagedAt < 1500;
       if (!van || van.destroyed || attacked) {
         const holder = world.players.get(g.holder);
         this.alert(g, holder?.x ?? g.homeX, holder?.y ?? g.homeY);
@@ -195,8 +244,8 @@ export class Crews {
     const world = this.world;
     b.toggle = !b.toggle;
     const g = this.groups.get(b.groupId);
-    const target = b.targetId ? world.players.get(b.targetId) : undefined;
-    if (!g || !target || target.life !== 'alive') return this.idle(b, p);
+    const target = g ? this.pickTarget(b, p) : undefined;
+    if (!g || !target) return this.idle(b, p);
 
     const dist = Math.hypot(target.x - p.x, target.y - p.y);
     const sees = dist < CREW.aggroRange && world.grid.lineOfSight(p.x, p.y, target.x, target.y);

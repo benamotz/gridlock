@@ -1,5 +1,6 @@
 import {
   type ConnectionState,
+  type CrewWire,
   type DeployableKind,
   type SolidDef,
   type InputCommand,
@@ -304,4 +305,9 @@ export interface CityHooks {
   prompt(p: PlayerEntity): string | null;
   /** The cellphone was answered: take the job on offer, or turn it down. */
   answerPhone(p: PlayerEntity, accept: boolean): void;
+  /** Two players in the same player crew (never true for residents). */
+  sameCrew(a: PlayerEntity, b: PlayerEntity): boolean;
+  /** The other members of `p`'s player crew who are in the world. */
+  crewmates(p: PlayerEntity): PlayerEntity[];
+  crewWire(p: PlayerEntity): CrewWire | null;
 }

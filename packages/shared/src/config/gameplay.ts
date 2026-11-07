@@ -179,6 +179,19 @@ export const GAMEPLAY = {
   freeRoam: {
     /** Players the always-on city holds at once. */
     maxPlayers: 32,
+    /** Player crews (co-op): friends who share jobs, pay and police heat. */
+    playerCrew: {
+      maxSize: 4,
+      /**
+       * Members this close to the job (or to whoever finished it) when it ends
+       * split the pay; anyone further away was not part of it.
+       */
+      shareRadius: 900,
+      /** Crewmates this close to a crime are accomplices and share the heat. */
+      accompliceRadius: 700,
+      /** Someone arriving by a crew link starts this far from a crewmate. */
+      joinDistance: 140,
+    },
     /**
      * Spawn samples across the whole city. Far more than a team zone needs,
      * because most random points land inside buildings or water.

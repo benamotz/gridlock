@@ -33,6 +33,8 @@ const AHEAD_CONE = Math.PI * 0.4;
 
 export function isThreat(p: PlayerWire, ctx: TargetContext): boolean {
   if (p.life !== 'alive' || p.id === ctx.selfId) return false;
+  // Your own crew is never a target, whatever their wanted level.
+  if (p.crewmate) return false;
   if (!ctx.freeRoam) {
     // Team modes: every enemy, never a teammate.
     return ctx.selfTeam < 0 || p.team !== ctx.selfTeam;

@@ -13,8 +13,10 @@ import { pickWeighted, randomBetween } from '../npc/brains.js';
 import { setWanted, wantedStars } from '../sim/wanted.js';
 import { dropMoney, giveCash } from './cash.js';
 import { CONTACTS, type Contact, Story } from './story.js';
+import type { PlayerCrews } from './playerCrews.js';
 
 const JOBS = GAMEPLAY.jobs;
+const PLAYER_CREW = GAMEPLAY.freeRoam.playerCrew;
 
 /** What a steal-to-order job wants: a vehicle type, or a squad car. */
 type BoostTarget = 'sports' | 'truck' | 'van' | 'motorcycle' | 'policeCar';
@@ -46,6 +48,8 @@ interface Job extends Plan {
   truckId: number | null;
   /** The armed crew this job set against the player (escort or hideout). */
   crewId: number | null;
+  /** The holder's player crew, remembered so the job outlives them leaving. */
+  crewCode: string | null;
 }
 
 interface Offer {
@@ -74,17 +78,42 @@ export class Jobs {
   private readonly jobs = new Map<string, Job>();
   private readonly offers = new Map<string, Offer>();
 
-  constructor(private readonly world: World, private readonly city: CityDirector) {}
+  constructor(
+    private readonly world: World,
+    private readonly city: CityDirector,
+    private readonly crews: PlayerCrews,
+  ) {}
 
+  /** True while `p` or anyone in their crew is on a job: a crew shares one. */
   has(p: PlayerEntity): boolean {
-    return this.jobs.has(p.id);
+    return this.jobFor(p) !== undefined;
+  }
+
+  /** The job `p` is on: their own, or the one their crew is on. */
+  private jobFor(p: PlayerEntity): Job | undefined {
+    const own = this.jobs.get(p.id);
+    if (own) return own;
+    for (const id of this.crews.memberIds(p.id)) {
+      const job = this.jobs.get(id);
+      if (job) return job;
+    }
+    return undefined;
+  }
+
+  /** Everyone on a job: its holder and the holder's crew, as in the world. */
+  private crewOn(job: Job): PlayerEntity[] {
+    const holder = this.world.players.get(job.holder);
+    if (!holder) return [];
+    return [holder, ...this.crews.mates(holder)];
   }
 
   /** A phone booth in `town` was used: hang up on a job, or take one. */
   phone(p: PlayerEntity, town = -1): void {
-    const job = this.jobs.get(p.id);
+    const job = this.jobFor(p);
     if (job) {
-      this.fail(job, 'Job dropped');
+      // Only whoever took the job can drop it for the whole crew.
+      if (job.holder === p.id) this.fail(job, 'Job dropped');
+      else this.notice(p, 'Your crew is already on a job');
       return;
     }
     this.clearOffer(p);
@@ -99,7 +128,7 @@ export class Jobs {
    */
   startKind(p: PlayerEntity, kind: JobKind): boolean {
     const contact = CONTACTS.find((c) => c.kinds.some(([k]) => k === kind));
-    if (!contact || this.jobs.has(p.id)) return false;
+    if (!contact || this.has(p)) return false;
     const plan = this.plan(p, contact, kind);
     return plan !== null && this.start(p, plan);
   }
@@ -109,7 +138,7 @@ export class Jobs {
     const offer = this.offers.get(p.id);
     if (!offer) return;
     this.clearOffer(p);
-    if (!accept || this.jobs.has(p.id) || p.life !== 'alive') {
+    if (!accept || this.has(p) || p.life !== 'alive') {
       this.scheduleCall(p);
       return;
     }
@@ -124,7 +153,14 @@ export class Jobs {
     this.story.forget((id) => world.players.has(id));
     this.ringPhones();
     for (const job of [...this.jobs.values()]) {
-      const holder = world.players.get(job.holder);
+      let holder = world.players.get(job.holder);
+      if (holder) job.crewCode = this.crews.codeOf(holder.id);
+      // In a crew the job survives its holder going down or leaving: a
+      // crewmate still standing carries it on.
+      if (!holder || holder.life !== 'alive') {
+        const heir = this.heir(job, holder);
+        if (heir) holder = this.handOver(job, heir);
+      }
       if (!holder) {
         this.finish(job);
         continue;
@@ -140,14 +176,56 @@ export class Jobs {
       this.advance(job, holder);
       if (this.jobs.get(job.holder) === job) this.publish(job, holder);
     }
+    this.clearStaleJobWires();
   }
 
-  /** Called for every death: a target only counts for the player hunting it. */
+  /** A living crewmate who can take over a job whose holder is down or gone. */
+  private heir(job: Job, holder: PlayerEntity | undefined): PlayerEntity | null {
+    // A departed holder is already out of the crew registry; the code the job
+    // remembered still finds the friends they left behind.
+    const ids = holder ? this.crews.memberIds(holder.id) : this.crews.membersOf(job.crewCode);
+    for (const id of ids) {
+      if (id === job.holder) continue;
+      const p = this.world.players.get(id);
+      if (p && !p.npc && p.life === 'alive' && !this.jobs.has(p.id)) return p;
+    }
+    return null;
+  }
+
+  private handOver(job: Job, heir: PlayerEntity): PlayerEntity {
+    const world = this.world;
+    this.jobs.delete(job.holder);
+    job.holder = heir.id;
+    this.jobs.set(heir.id, job);
+    const target = job.targetId ? world.players.get(job.targetId) : undefined;
+    if (target?.npc) target.markedFor = heir.id;
+    const truck = job.truckId !== null ? world.vehicles.get(job.truckId) : undefined;
+    if (truck) {
+      truck.protectedFor = heir.id;
+      const driver = truck.driverId ? world.players.get(truck.driverId) : undefined;
+      if (driver?.npc) driver.markedFor = heir.id;
+    }
+    if (job.crewId !== null) this.city.crews.setHolder(job.crewId, heir.id);
+    this.notice(heir, 'You are carrying the job now');
+    return heir;
+  }
+
+  /** Someone who left a crew (or whose crew finished) stops seeing its job. */
+  private clearStaleJobWires(): void {
+    const onJob = new Set<string>();
+    for (const job of this.jobs.values()) for (const p of this.crewOn(job)) onJob.add(p.id);
+    for (const p of this.world.players.values()) {
+      if (!p.npc && p.job && !onJob.has(p.id)) p.job = null;
+    }
+  }
+
+  /** Called for every death: a target only counts for the crew hunting it. */
   onKill(victim: PlayerEntity, killer: PlayerEntity | null): void {
     for (const job of [...this.jobs.values()]) {
       if (job.targetId !== victim.id) continue;
-      const holder = this.world.players.get(job.holder);
-      if (holder && killer?.id === holder.id) this.complete(job, holder);
+      const crew = this.crewOn(job);
+      const ours = killer ? crew.find((p) => p.id === killer.id) : undefined;
+      if (ours) this.complete(job, ours);
       else this.fail(job, 'Job failed - someone else got to the target');
     }
   }
@@ -158,7 +236,7 @@ export class Jobs {
    * otherwise null and the shop buys it as usual.
    */
   chop(p: PlayerEntity, v: VehicleEntity, shop: ServiceDef): number | null {
-    const job = this.jobs.get(p.id);
+    const job = this.jobFor(p);
     if (!job || job.kind !== 'boost' || !job.boost) return null;
     if (shop.id !== job.boost.chop.id || !matches(v, job.boost.target)) return null;
     const condition = Math.max(0, v.hp / Math.max(1, v.maxHp));
@@ -254,6 +332,8 @@ export class Jobs {
     let best: PlayerEntity | null = null;
     for (const o of this.world.players.values()) {
       if (o.npc || o.id === p.id || o.life !== 'alive') continue;
+      // Never a bounty on your own crew.
+      if (this.crews.same(p, o)) continue;
       const stars = wantedStars(o.heat);
       if (stars >= 2 && (!best || o.heat > best.heat)) best = o;
     }
@@ -285,6 +365,7 @@ export class Jobs {
     const world = this.world;
     const job: Job = {
       ...plan, holder: p.id, x: p.x, y: p.y, endsAt: 0, targetId: null, truckId: null, crewId: null,
+      crewCode: this.crews.codeOf(p.id),
     };
     switch (plan.kind) {
       case 'courier': {
@@ -371,9 +452,13 @@ export class Jobs {
   private advance(job: Job, holder: PlayerEntity): void {
     const world = this.world;
     switch (job.kind) {
-      case 'courier':
-        if (Math.hypot(holder.x - job.x, holder.y - job.y) < JOBS.courierRadius) this.complete(job, holder);
+      case 'courier': {
+        // Any of the crew can make the drop.
+        const there = this.crewOn(job).find((p) =>
+          p.life === 'alive' && Math.hypot(p.x - job.x, p.y - job.y) < JOBS.courierRadius);
+        if (there) this.complete(job, there);
         return;
+      }
       case 'hit':
       case 'bounty': {
         const target = job.targetId ? world.players.get(job.targetId) : undefined;
@@ -453,26 +538,48 @@ export class Jobs {
     return best;
   }
 
+  /** Shows the job to its holder and their whole crew. */
   private publish(job: Job, holder: PlayerEntity): void {
-    holder.job = {
+    const wire = {
       kind: job.kind, text: job.title,
       contact: job.contact.name, brief: job.brief,
       x: Math.round(job.x), y: Math.round(job.y),
       reward: job.reward, endsAt: job.endsAt,
     };
+    holder.job = wire;
+    for (const mate of this.crews.mates(holder)) mate.job = wire;
   }
 
-  private complete(job: Job, holder: PlayerEntity, pay = job.reward, message = 'Job done'): void {
-    if (pay > 0) giveCash(this.world, holder, pay, 'job');
-    this.notice(holder, message);
+  /**
+   * Pays a finished job. A crew splits it between the members who were in on
+   * it - near the job or near whoever finished it - so a friend idling across
+   * town gets nothing.
+   */
+  private complete(job: Job, by: PlayerEntity, pay = job.reward, message = 'Job done'): void {
+    const crew = this.crewOn(job);
+    const near = (p: PlayerEntity): boolean =>
+      Math.hypot(p.x - by.x, p.y - by.y) <= PLAYER_CREW.shareRadius ||
+      Math.hypot(p.x - job.x, p.y - job.y) <= PLAYER_CREW.shareRadius;
+    const paid = crew.filter((p) => p.id === by.id || near(p));
+    if (paid.length === 0) paid.push(by);
+    const share = paid.length > 1 ? Math.round(pay / paid.length / 10) * 10 : pay;
+    for (const p of crew) {
+      const inOnIt = paid.includes(p);
+      if (pay > 0 && inOnIt) giveCash(this.world, p, share, 'job');
+      const note = pay > 0 && paid.length > 1
+        ? inOnIt ? `${message} - $${share} each` : `${message} - you were too far away for a cut`
+        : message;
+      this.notice(p, note);
+    }
+    const holder = this.world.players.get(job.holder) ?? by;
     this.say(holder, job.contact, this.story.close(holder.id, job.contact, true, job.finale, this.world.rng));
     this.finish(job);
   }
 
   private fail(job: Job, message: string): void {
     const holder = this.world.players.get(job.holder);
+    for (const p of this.crewOn(job)) this.notice(p, message);
     if (holder) {
-      this.notice(holder, message);
       this.say(holder, job.contact, this.story.close(holder.id, job.contact, false, job.finale, this.world.rng));
     }
     this.finish(job);
@@ -480,12 +587,12 @@ export class Jobs {
 
   private finish(job: Job): void {
     const world = this.world;
+    const crew = this.crewOn(job);
     if (this.jobs.get(job.holder) === job) this.jobs.delete(job.holder);
-    const holder = world.players.get(job.holder);
-    if (holder) {
-      holder.job = null;
+    for (const p of crew) {
+      p.job = null;
       // The phone stays quiet for a while after a job, whatever the outcome.
-      this.scheduleCall(holder);
+      this.scheduleCall(p);
     }
     const target = job.targetId ? world.players.get(job.targetId) : undefined;
     if (target?.npc) target.markedFor = null;
@@ -519,7 +626,7 @@ export class Jobs {
     }
     for (const p of world.players.values()) {
       if (p.npc || !p.hasPhone || p.life !== 'alive') continue;
-      if (this.jobs.has(p.id) || this.offers.has(p.id) || world.now < p.nextOfferAt) continue;
+      if (this.has(p) || this.offers.has(p.id) || world.now < p.nextOfferAt) continue;
       const contact = this.story.contactFor(-1, world.rng);
       const plan = this.plan(p, contact);
       if (!plan) {
