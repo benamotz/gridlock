@@ -35,6 +35,7 @@ import { Minimap } from '../render/minimap.js';
 import { type TouchAction, TouchInput, type TouchOptions, type TouchSampleContext } from './touch/TouchInput.js';
 import { buzz, touchEnabled } from './touch/device.js';
 import { PerfMeter } from './perfMeter.js';
+import { SnapshotClock, TELEPORT_DIST, interpAlpha } from './snapshotClock.js';
 import { InputManager } from './input.js';
 import type { ClientSocket } from '../net/ClientSocket.js';
 import { GameAudio } from '../audio/Audio.js';
@@ -88,6 +89,8 @@ export class GameClient {
   private buffer: TimedSnapshot[] = [];
   private latest: SnapshotMsg | null = null;
   private renderTime = 0;
+  /** Sizes the interpolation delay to how unevenly snapshots arrive. */
+  private snapClock = new SnapshotClock(GAMEPLAY.interpDelayMs, 1000 / GAMEPLAY.snapshotHz);
   private seq = 1;
   private pending: InputCommand[] = [];
   private unsent: InputCommand[] = [];
@@ -387,9 +390,10 @@ export class GameClient {
     // about them or predicted movement will walk straight through a barricade
     // the server has already placed.
     this.syncDeployableSolids(snap.deployables);
-    // Two seconds of history is plenty for a 120ms interpolation delay.
+    // Two and a half seconds of history covers the largest adaptive delay.
     while (this.buffer.length > 40) this.buffer.shift();
-    if (this.renderTime === 0) this.renderTime = snap.serverTime - GAMEPLAY.interpDelayMs;
+    const delay = this.snapClock.arrive(snap.serverTime, performance.now());
+    if (this.renderTime === 0) this.renderTime = snap.serverTime - delay;
 
     this.predictedShots = 0;
     this.reconcile(snap);
@@ -675,8 +679,9 @@ export class GameClient {
     const newest = this.buffer[this.buffer.length - 1];
     if (newest) {
       this.renderTime += dt * 1000;
-      const target = newest.time - GAMEPLAY.interpDelayMs;
+      const target = newest.time - this.snapClock.delayMs;
       this.renderTime += (target - this.renderTime) * Math.min(1, dt * 3);
+      if (this.renderTime > newest.time) this.snapClock.starvedFrames++;
     }
 
     this.errorX *= Math.exp(-9 * dt);
@@ -798,6 +803,8 @@ export class GameClient {
       const r = this.renderer;
       perf.frameEnd(
         `${interpolated.players.length} people · ${interpolated.vehicles.length} vehicles · ` +
+        `delay ${Math.round(this.snapClock.delayMs)}ms jitter ${Math.round(this.snapClock.jitterMs)}ms ` +
+        `starved ${this.snapClock.starvedFrames} · ` +
         `${Math.round(r.viewWidth)}x${Math.round(r.viewHeight)} @${r.pixelRatio.toFixed(1)}x · zoom ${r.camera.zoom.toFixed(2)}`,
       );
     }
@@ -1173,12 +1180,14 @@ export class GameClient {
     if (buf.length === 0) {
       return { players: [], vehicles: [], projectiles: [] };
     }
-    if (buf.length === 1 || this.renderTime >= buf[buf.length - 1].time) {
-      const last = buf[buf.length - 1];
+    if (buf.length === 1) {
+      const last = buf[0];
       return { players: last.players, vehicles: last.vehicles, projectiles: last.projectiles };
     }
 
-    let a = buf[0];
+    // The pair straddling renderTime; past the newest snapshot, the last two
+    // (carried forward a little rather than frozen - see snapshotClock.ts).
+    let a = buf[buf.length - 2];
     let b = buf[buf.length - 1];
     for (let i = 0; i < buf.length - 1; i++) {
       if (buf[i].time <= this.renderTime && buf[i + 1].time >= this.renderTime) {
@@ -1187,28 +1196,37 @@ export class GameClient {
         break;
       }
     }
-    const span = b.time - a.time;
-    const alpha = span > 0 ? Math.max(0, Math.min(1, (this.renderTime - a.time) / span)) : 1;
+    if (this.renderTime < buf[0].time) {
+      a = buf[0];
+      b = buf[1];
+    }
+    const rawAlpha = interpAlpha(a.time, b.time, this.renderTime);
+    // Only motion is extrapolated: a teleport stays where it landed.
+    const alphaFor = (ax: number, ay: number, bx: number, by: number): number =>
+      rawAlpha > 1 && Math.abs(bx - ax) + Math.abs(by - ay) > TELEPORT_DIST ? 1 : rawAlpha;
+    const angleAlpha = Math.min(1, rawAlpha);
 
     const players = b.players.map((nb) => {
       const na = a.players.find((p) => p.id === nb.id);
       if (!na) return nb;
+      const alpha = alphaFor(na.x, na.y, nb.x, nb.y);
       return {
         ...nb,
         x: lerp(na.x, nb.x, alpha),
         y: lerp(na.y, nb.y, alpha),
-        aim: lerpAngle(na.aim, nb.aim, alpha),
+        aim: lerpAngle(na.aim, nb.aim, angleAlpha),
       };
     });
 
     const vehicles = b.vehicles.map((nb) => {
       const na = a.vehicles.find((v) => v.id === nb.id);
       if (!na) return nb;
+      const alpha = alphaFor(na.x, na.y, nb.x, nb.y);
       return {
         ...nb,
         x: lerp(na.x, nb.x, alpha),
         y: lerp(na.y, nb.y, alpha),
-        rot: lerpAngle(na.rot, nb.rot, alpha),
+        rot: lerpAngle(na.rot, nb.rot, angleAlpha),
       };
     });
 
